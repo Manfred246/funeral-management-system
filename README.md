@@ -33,6 +33,10 @@ mvn -pl backend spring-boot:run
 - `/api/funeral-requests/sort` — сортировка;
 - `/api/funeral-requests/export` — экспорт в XLSX.
 
+Ошибки API возвращаются в едином JSON-формате с полями `timestamp`, `status`, `error`,
+`message` и `path`. Клиента со связанными заявками удалить нельзя: API возвращает
+`409 Conflict`, сохраняя клиента и историю его заявок.
+
 ## Проверка
 
 ```bash

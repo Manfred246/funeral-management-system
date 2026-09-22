@@ -37,6 +37,12 @@ public class JdbcFuneralRequestRepository implements FuneralRequestRepository {
     private static final String SELECT_ALL_SQL =
             "SELECT " + COLUMNS + " FROM funeral_requests ORDER BY id";
 
+    private static final String EXISTS_BY_CLIENT_ID_SQL = """
+            SELECT EXISTS (
+                SELECT 1 FROM funeral_requests WHERE client_id = ?
+            )
+            """;
+
     private static final String UPDATE_SQL = """
             UPDATE funeral_requests
             SET client_id = ?, deceased_full_name = ?, ceremony_date = ?, ceremony_type = ?,
@@ -101,6 +107,16 @@ public class JdbcFuneralRequestRepository implements FuneralRequestRepository {
     @Override
     public List<FuneralRequest> findAll() {
         return jdbcTemplate.query(SELECT_ALL_SQL, ROW_MAPPER);
+    }
+
+    @Override
+    public boolean existsByClientId(Long clientId) {
+        Boolean exists = jdbcTemplate.queryForObject(
+                EXISTS_BY_CLIENT_ID_SQL,
+                Boolean.class,
+                clientId
+        );
+        return Boolean.TRUE.equals(exists);
     }
 
     @Override

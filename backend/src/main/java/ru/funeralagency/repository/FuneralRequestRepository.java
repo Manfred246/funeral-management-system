@@ -14,6 +14,8 @@ public interface FuneralRequestRepository {
 
     List<FuneralRequest> findAll();
 
+    boolean existsByClientId(Long clientId);
+
     void update(FuneralRequest request);
 
     void deleteById(Long id);

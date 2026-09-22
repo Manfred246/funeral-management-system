@@ -15,6 +15,7 @@ import java.time.LocalDateTime;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @JdbcTest
 @Import({JdbcClientRepository.class, JdbcFuneralRequestRepository.class})
@@ -45,6 +46,7 @@ class JdbcRepositoriesTest {
 
         assertNotNull(client.getId());
         assertNotNull(request.getId());
+        assertTrue(requestRepository.existsByClientId(client.getId()));
         assertEquals(
                 "Петров Пётр Петрович",
                 requestRepository.findById(request.getId()).orElseThrow().getDeceasedFullName()
