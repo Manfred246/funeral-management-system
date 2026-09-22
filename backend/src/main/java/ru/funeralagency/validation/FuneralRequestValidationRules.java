@@ -11,6 +11,9 @@ import java.time.LocalDate;
 /** Проверка и нормализация заявки независимо от REST-слоя. */
 public final class FuneralRequestValidationRules {
 
+    public static final int MAX_DECEASED_FULL_NAME_LENGTH = 150;
+    public static final int MAX_COMMENT_LENGTH = 1000;
+
     private FuneralRequestValidationRules() {
     }
 
@@ -45,8 +48,12 @@ public final class FuneralRequestValidationRules {
         if (!StringUtils.hasText(request.getDeceasedFullName())) {
             throw new InvalidFuneralRequestException("ФИО умершего обязательно");
         }
-        if (request.getDeceasedFullName().length() > 150) {
-            throw new InvalidFuneralRequestException("ФИО умершего не должно превышать 150 символов");
+        if (request.getDeceasedFullName().length() > MAX_DECEASED_FULL_NAME_LENGTH) {
+            throw new InvalidFuneralRequestException(
+                    "ФИО умершего не должно превышать "
+                            + MAX_DECEASED_FULL_NAME_LENGTH
+                            + " символов"
+            );
         }
         if (request.getCeremonyDate() == null) {
             throw new InvalidFuneralRequestException("Дата церемонии обязательна");
@@ -63,8 +70,10 @@ public final class FuneralRequestValidationRules {
         if (request.getPrice().compareTo(BigDecimal.ZERO) < 0) {
             throw new InvalidFuneralRequestException("Стоимость заявки не может быть отрицательной");
         }
-        if (request.getComment() != null && request.getComment().length() > 1000) {
-            throw new InvalidFuneralRequestException("Комментарий не должен превышать 1000 символов");
+        if (request.getComment() != null && request.getComment().length() > MAX_COMMENT_LENGTH) {
+            throw new InvalidFuneralRequestException(
+                    "Комментарий не должен превышать " + MAX_COMMENT_LENGTH + " символов"
+            );
         }
     }
 

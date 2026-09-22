@@ -1,6 +1,5 @@
 package ru.funeralagency.controller;
 
-import jakarta.validation.Valid;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ContentDisposition;
 import org.springframework.http.HttpHeaders;
@@ -24,6 +23,7 @@ import ru.funeralagency.model.FuneralRequest;
 import ru.funeralagency.model.RequestStatus;
 import ru.funeralagency.service.ExcelExporter;
 import ru.funeralagency.service.FuneralRequestService;
+import ru.funeralagency.validation.FuneralRequestDtoValidator;
 
 import java.net.URI;
 import java.time.LocalDate;
@@ -41,21 +41,25 @@ public class FuneralRequestController {
     private final FuneralRequestService requestService;
     private final FuneralRequestMapper requestMapper;
     private final ExcelExporter excelExporter;
+    private final FuneralRequestDtoValidator requestValidator;
 
     public FuneralRequestController(
             FuneralRequestService requestService,
             FuneralRequestMapper requestMapper,
-            ExcelExporter excelExporter
+            ExcelExporter excelExporter,
+            FuneralRequestDtoValidator requestValidator
     ) {
         this.requestService = requestService;
         this.requestMapper = requestMapper;
         this.excelExporter = excelExporter;
+        this.requestValidator = requestValidator;
     }
 
     @PostMapping
     public ResponseEntity<FuneralRequestResponseDto> create(
-            @Valid @RequestBody FuneralRequestCreateDto dto
+            @RequestBody FuneralRequestCreateDto dto
     ) {
+        requestValidator.validateForCreate(dto);
         FuneralRequest created = requestService.create(requestMapper.toEntity(dto));
         return ResponseEntity
                 .created(URI.create("/api/funeral-requests/" + created.getId()))
@@ -75,8 +79,9 @@ public class FuneralRequestController {
     @PutMapping("/{id}")
     public FuneralRequestResponseDto update(
             @PathVariable Long id,
-            @Valid @RequestBody FuneralRequestUpdateDto dto
+            @RequestBody FuneralRequestUpdateDto dto
     ) {
+        requestValidator.validateForUpdate(dto);
         FuneralRequest updated = requestService.update(id, requestMapper.toEntity(dto));
         return requestMapper.toResponseDto(updated);
     }

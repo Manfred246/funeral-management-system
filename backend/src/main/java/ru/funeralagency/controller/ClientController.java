@@ -1,6 +1,5 @@
 package ru.funeralagency.controller;
 
-import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -15,6 +14,7 @@ import ru.funeralagency.dto.ClientRequestDto;
 import ru.funeralagency.mapper.ClientMapper;
 import ru.funeralagency.model.Client;
 import ru.funeralagency.service.ClientService;
+import ru.funeralagency.validation.ClientRequestValidator;
 
 import java.net.URI;
 import java.util.List;
@@ -26,14 +26,21 @@ public class ClientController {
 
     private final ClientService clientService;
     private final ClientMapper clientMapper;
+    private final ClientRequestValidator requestValidator;
 
-    public ClientController(ClientService clientService, ClientMapper clientMapper) {
+    public ClientController(
+            ClientService clientService,
+            ClientMapper clientMapper,
+            ClientRequestValidator requestValidator
+    ) {
         this.clientService = clientService;
         this.clientMapper = clientMapper;
+        this.requestValidator = requestValidator;
     }
 
     @PostMapping
-    public ResponseEntity<ClientResponseDto> create(@Valid @RequestBody ClientRequestDto dto) {
+    public ResponseEntity<ClientResponseDto> create(@RequestBody ClientRequestDto dto) {
+        requestValidator.validate(dto);
         Client createdClient = clientService.create(clientMapper.toEntity(dto));
         ClientResponseDto response = clientMapper.toResponseDto(createdClient);
         return ResponseEntity
@@ -54,8 +61,9 @@ public class ClientController {
     @PutMapping("/{id}")
     public ClientResponseDto update(
             @PathVariable Long id,
-            @Valid @RequestBody ClientRequestDto dto
+            @RequestBody ClientRequestDto dto
     ) {
+        requestValidator.validate(dto);
         Client updatedClient = clientService.update(id, clientMapper.toEntity(dto, id));
         return clientMapper.toResponseDto(updatedClient);
     }

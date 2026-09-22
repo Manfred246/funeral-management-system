@@ -1,11 +1,5 @@
 package ru.funeralagency.dto;
 
-import jakarta.validation.constraints.DecimalMin;
-import jakarta.validation.constraints.FutureOrPresent;
-import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotNull;
-import jakarta.validation.constraints.Positive;
-import jakarta.validation.constraints.Size;
 import ru.funeralagency.model.CeremonyType;
 
 import java.math.BigDecimal;
@@ -14,26 +8,11 @@ import java.time.LocalDate;
 /** Данные для создания заявки; ID и время создания назначаются сервером. */
 public class FuneralRequestCreateDto {
 
-    @NotNull(message = "ID клиента обязателен")
-    @Positive(message = "ID клиента должен быть положительным")
     private Long clientId;
-
-    @NotBlank(message = "ФИО умершего обязательно")
-    @Size(max = 150, message = "ФИО умершего не должно превышать 150 символов")
     private String deceasedFullName;
-
-    @NotNull(message = "Дата церемонии обязательна")
-    @FutureOrPresent(message = "Дата церемонии не может находиться в прошлом")
     private LocalDate ceremonyDate;
-
-    @NotNull(message = "Тип церемонии обязателен")
     private CeremonyType ceremonyType;
-
-    @NotNull(message = "Стоимость обязательна")
-    @DecimalMin(value = "0.00", message = "Стоимость не может быть отрицательной")
     private BigDecimal price;
-
-    @Size(max = 1000, message = "Комментарий не должен превышать 1000 символов")
     private String comment;
 
     public FuneralRequestCreateDto() {
