@@ -56,6 +56,10 @@ public class ClientService {
         clientRepository.deleteById(id);
     }
 
+    public void delete(Long id) {
+        deleteById(id);
+    }
+
     private void validateId(Long id) {
         if (id == null || id <= 0) {
             throw new InvalidClientException("ID клиента должен быть положительным числом");

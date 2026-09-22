@@ -11,8 +11,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import ru.funeralagency.dto.ClientResponseDto;
-import ru.funeralagency.dto.CreateClientDto;
-import ru.funeralagency.dto.UpdateClientDto;
+import ru.funeralagency.dto.ClientRequestDto;
 import ru.funeralagency.mapper.ClientMapper;
 import ru.funeralagency.model.Client;
 import ru.funeralagency.service.ClientService;
@@ -34,7 +33,7 @@ public class ClientController {
     }
 
     @PostMapping
-    public ResponseEntity<ClientResponseDto> create(@Valid @RequestBody CreateClientDto dto) {
+    public ResponseEntity<ClientResponseDto> create(@Valid @RequestBody ClientRequestDto dto) {
         Client createdClient = clientService.create(clientMapper.toEntity(dto));
         ClientResponseDto response = clientMapper.toResponseDto(createdClient);
         return ResponseEntity
@@ -55,7 +54,7 @@ public class ClientController {
     @PutMapping("/{id}")
     public ClientResponseDto update(
             @PathVariable Long id,
-            @Valid @RequestBody UpdateClientDto dto
+            @Valid @RequestBody ClientRequestDto dto
     ) {
         Client updatedClient = clientService.update(id, clientMapper.toEntity(dto, id));
         return clientMapper.toResponseDto(updatedClient);
