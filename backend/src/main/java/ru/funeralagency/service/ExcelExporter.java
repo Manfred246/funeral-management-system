@@ -9,6 +9,7 @@ import org.apache.poi.ss.usermodel.Sheet;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.springframework.stereotype.Component;
 import ru.funeralagency.model.FuneralRequest;
+import ru.funeralagency.exception.BusinessException;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -123,7 +124,7 @@ public class ExcelExporter {
 
     private void setTextCell(Row row, int column, String value) {
         if (value != null && value.length() > 32767) {
-            throw new IllegalStateException("Текст превышает ограничение ячейки Excel: 32767 символов");
+            throw new BusinessException("Текст превышает ограничение ячейки Excel: 32767 символов");
         }
         row.createCell(column).setCellValue(value == null ? "" : value);
     }

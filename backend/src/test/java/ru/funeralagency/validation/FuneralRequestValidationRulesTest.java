@@ -3,6 +3,8 @@ package ru.funeralagency.validation;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+import ru.funeralagency.exception.InvalidFuneralRequestException;
+import ru.funeralagency.exception.BusinessException;
 import ru.funeralagency.model.CeremonyType;
 import ru.funeralagency.model.FuneralRequest;
 import ru.funeralagency.model.RequestStatus;
@@ -28,7 +30,7 @@ class FuneralRequestValidationRulesTest {
         request.setDeceasedFullName("   ");
 
         assertThrows(
-                IllegalArgumentException.class,
+                InvalidFuneralRequestException.class,
                 () -> FuneralRequestValidationRules.validate(request)
         );
     }
@@ -39,7 +41,7 @@ class FuneralRequestValidationRulesTest {
         request.setPrice(new BigDecimal("-0.01"));
 
         assertThrows(
-                IllegalArgumentException.class,
+                InvalidFuneralRequestException.class,
                 () -> FuneralRequestValidationRules.validate(request)
         );
     }
@@ -50,7 +52,7 @@ class FuneralRequestValidationRulesTest {
         request.setCeremonyDate(LocalDate.now().minusDays(1));
 
         assertThrows(
-                IllegalArgumentException.class,
+                InvalidFuneralRequestException.class,
                 () -> FuneralRequestValidationRules.validate(request)
         );
     }
@@ -70,21 +72,21 @@ class FuneralRequestValidationRulesTest {
     @Test
     void rejectsForbiddenStatusTransitions() {
         assertThrows(
-                IllegalStateException.class,
+                BusinessException.class,
                 () -> FuneralRequestValidationRules.validateStatusTransition(
                         RequestStatus.NEW,
                         RequestStatus.COMPLETED
                 )
         );
         assertThrows(
-                IllegalStateException.class,
+                BusinessException.class,
                 () -> FuneralRequestValidationRules.validateStatusTransition(
                         RequestStatus.COMPLETED,
                         RequestStatus.CANCELLED
                 )
         );
         assertThrows(
-                IllegalStateException.class,
+                BusinessException.class,
                 () -> FuneralRequestValidationRules.validateStatusTransition(
                         RequestStatus.CANCELLED,
                         RequestStatus.IN_PROGRESS
@@ -123,7 +125,7 @@ class FuneralRequestValidationRulesTest {
     void rejectsPricesThatCannotBeStoredExactly(String price) {
         FuneralRequest request = validRequest();
         request.setPrice(new BigDecimal(price));
-        assertThrows(IllegalArgumentException.class, () -> FuneralRequestValidationRules.validate(request));
+        assertThrows(InvalidFuneralRequestException.class, () -> FuneralRequestValidationRules.validate(request));
     }
 
     @ParameterizedTest
@@ -136,16 +138,16 @@ class FuneralRequestValidationRulesTest {
 
     @Test
     void rejectsMissingRequiredFields() {
-        assertThrows(IllegalArgumentException.class, () -> FuneralRequestValidationRules.validate(null));
+        assertThrows(InvalidFuneralRequestException.class, () -> FuneralRequestValidationRules.validate(null));
         FuneralRequest request = validRequest();
         request.setClientId(0L);
-        assertThrows(IllegalArgumentException.class, () -> FuneralRequestValidationRules.validate(request));
+        assertThrows(InvalidFuneralRequestException.class, () -> FuneralRequestValidationRules.validate(request));
         request.setClientId(1L);
         request.setCeremonyType(null);
-        assertThrows(IllegalArgumentException.class, () -> FuneralRequestValidationRules.validate(request));
+        assertThrows(InvalidFuneralRequestException.class, () -> FuneralRequestValidationRules.validate(request));
         request.setCeremonyType(CeremonyType.BURIAL);
         request.setPrice(null);
-        assertThrows(IllegalArgumentException.class, () -> FuneralRequestValidationRules.validate(request));
+        assertThrows(InvalidFuneralRequestException.class, () -> FuneralRequestValidationRules.validate(request));
     }
 
     @Test
@@ -153,7 +155,7 @@ class FuneralRequestValidationRulesTest {
         FuneralRequest request = validRequest();
         LocalDate previousDate = request.getCeremonyDate();
         request.setCeremonyDate(LocalDate.now().minusDays(1));
-        assertThrows(IllegalArgumentException.class,
+        assertThrows(InvalidFuneralRequestException.class,
                 () -> FuneralRequestValidationRules.validateForUpdate(request, previousDate));
     }
 }

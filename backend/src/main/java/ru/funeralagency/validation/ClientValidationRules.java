@@ -1,5 +1,6 @@
 package ru.funeralagency.validation;
 
+import ru.funeralagency.exception.InvalidClientException;
 import ru.funeralagency.model.Client;
 
 /** Проверки выполняются сервисом перед созданием и изменением клиента. */
@@ -9,15 +10,15 @@ public final class ClientValidationRules {
 
     public static void validateAndNormalize(Client client) {
         if (client == null) {
-            throw new IllegalArgumentException("Данные клиента обязательны");
+            throw new InvalidClientException("Данные клиента обязательны");
         }
         String fullName = client.getFullName();
         if (fullName == null || fullName.isBlank()) {
-            throw new IllegalArgumentException("ФИО клиента обязательно");
+            throw new InvalidClientException("ФИО клиента обязательно");
         }
         fullName = fullName.trim().replaceAll("\\s+", " ");
         if (fullName.length() > 255) {
-            throw new IllegalArgumentException("ФИО клиента не должно превышать 255 символов");
+            throw new InvalidClientException("ФИО клиента не должно превышать 255 символов");
         }
         String phone = normalizePhone(client.getPhone());
         String email = client.getEmail();
@@ -26,7 +27,7 @@ public final class ClientValidationRules {
             if (email.isEmpty()) {
                 email = null;
             } else if (email.length() > 255 || !email.matches("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$")) {
-                throw new IllegalArgumentException("Некорректный email");
+                throw new InvalidClientException("Некорректный email");
             }
         }
         client.setFullName(fullName);
@@ -36,16 +37,16 @@ public final class ClientValidationRules {
 
     private static String normalizePhone(String phone) {
         if (phone == null || phone.isBlank()) {
-            throw new IllegalArgumentException("Телефон клиента обязателен");
+            throw new InvalidClientException("Телефон клиента обязателен");
         }
         phone = phone.trim();
         // Проверяем исходную строку, чтобы не скрыть ошибочные символы при очистке.
         if (!phone.matches("\\+?[0-9][0-9 ()-]*") || !hasBalancedParentheses(phone)) {
-            throw new IllegalArgumentException("Некорректный формат телефона");
+            throw new InvalidClientException("Некорректный формат телефона");
         }
         String normalized = phone.replaceAll("[ ()-]", "");
         if (!normalized.matches("\\+?[0-9]{10,15}")) {
-            throw new IllegalArgumentException("Телефон должен содержать от 10 до 15 цифр");
+            throw new InvalidClientException("Телефон должен содержать от 10 до 15 цифр");
         }
         // Максимум 16 символов вместе с '+': помещается в VARCHAR(20).
         return normalized;

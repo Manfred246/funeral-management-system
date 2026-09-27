@@ -4,6 +4,7 @@ import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.junit.jupiter.api.Test;
 import ru.funeralagency.model.CeremonyType;
 import ru.funeralagency.model.FuneralRequest;
+import ru.funeralagency.exception.BusinessException;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import ru.funeralagency.model.RequestStatus;
 
@@ -21,7 +22,7 @@ class ExcelExporterTest {
     void reportsExcelTextLimitWithoutTruncatingData() {
         FuneralRequest request = new FuneralRequest();
         request.setComment("Я".repeat(32768));
-        assertThrows(IllegalStateException.class, () -> new ExcelExporter().export(List.of(request)));
+        assertThrows(BusinessException.class, () -> new ExcelExporter().export(List.of(request)));
     }
 
     @Test

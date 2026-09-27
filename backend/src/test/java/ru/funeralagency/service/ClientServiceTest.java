@@ -5,8 +5,11 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import ru.funeralagency.exception.BusinessException;
+import ru.funeralagency.exception.ClientHasRequestsException;
+import ru.funeralagency.exception.ClientNotFoundException;
 import ru.funeralagency.exception.DatabaseException;
-import ru.funeralagency.exception.EntityNotFoundException;
+import ru.funeralagency.exception.InvalidClientException;
 import ru.funeralagency.model.Client;
 import ru.funeralagency.repository.ClientRepository;
 import ru.funeralagency.repository.FuneralRequestRepository;
@@ -43,7 +46,7 @@ class ClientServiceTest {
 
     @Test
     void invalidDataNeverReachesRepository() {
-        assertThrows(IllegalArgumentException.class,
+        assertThrows(InvalidClientException.class,
                 () -> service.create(new Client(null, "Иван Иванов", "123", null)));
         verifyNoInteractions(clients);
     }
@@ -63,14 +66,14 @@ class ClientServiceTest {
     @Test
     void duplicateContactBecomesBusinessConflict() {
         when(clients.create(any())).thenThrow(databaseError("23505"));
-        assertThrows(IllegalStateException.class,
+        assertThrows(BusinessException.class,
                 () -> service.create(new Client(null, "Иван Иванов", "+79991234567", null)));
     }
 
     @Test
     void missingClientCannotBeDeleted() {
         when(clients.findById(7L)).thenReturn(Optional.empty());
-        assertThrows(EntityNotFoundException.class, () -> service.deleteById(7L));
+        assertThrows(ClientNotFoundException.class, () -> service.deleteById(7L));
         verify(clients, never()).deleteById(anyLong());
     }
 
@@ -78,7 +81,7 @@ class ClientServiceTest {
     void linkedClientCannotBeDeleted() {
         when(clients.findById(7L)).thenReturn(Optional.of(new Client()));
         when(requests.existsByClientId(7L)).thenReturn(true);
-        assertThrows(IllegalStateException.class, () -> service.deleteById(7L));
+        assertThrows(ClientHasRequestsException.class, () -> service.deleteById(7L));
         verify(clients, never()).deleteById(anyLong());
     }
 
@@ -86,7 +89,7 @@ class ClientServiceTest {
     void foreignKeyRaceBecomesConflictButConnectionErrorIsPreserved() {
         when(clients.findById(7L)).thenReturn(Optional.of(new Client()));
         doThrow(databaseError("23503")).when(clients).deleteById(7L);
-        assertThrows(IllegalStateException.class, () -> service.deleteById(7L));
+        assertThrows(ClientHasRequestsException.class, () -> service.deleteById(7L));
         DatabaseException failure = databaseError("08006");
         doThrow(failure).when(clients).deleteById(7L);
         assertSame(failure, assertThrows(DatabaseException.class, () -> service.deleteById(7L)));

@@ -1,8 +1,11 @@
 package ru.funeralagency.service;
 
 import ru.funeralagency.exception.DatabaseException;
+import ru.funeralagency.exception.BusinessException;
 import org.springframework.stereotype.Service;
-import ru.funeralagency.exception.EntityNotFoundException;
+import ru.funeralagency.exception.ClientHasRequestsException;
+import ru.funeralagency.exception.ClientNotFoundException;
+import ru.funeralagency.exception.InvalidClientException;
 import ru.funeralagency.model.Client;
 import ru.funeralagency.repository.ClientRepository;
 import ru.funeralagency.repository.FuneralRequestRepository;
@@ -39,7 +42,7 @@ public class ClientService {
     public Client findById(Long id) {
         validateId(id);
         return clientRepository.findById(id)
-                .orElseThrow(() -> new EntityNotFoundException("Клиент с ID " + id + " не найден"));
+                .orElseThrow(() -> new ClientNotFoundException(id));
     }
 
     public List<Client> findAll() {
@@ -67,17 +70,14 @@ public class ClientService {
         // Проверка до удаления позволяет вернуть корректный 404 вместо успешного DELETE для отсутствующего ID.
         findById(id);
         if (requestRepository.existsByClientId(id)) {
-            throw new IllegalStateException("Нельзя удалить клиента с ID " + id + ": у него есть связанные заявки");
+            throw new ClientHasRequestsException(id);
         }
         try {
             clientRepository.deleteById(id);
         } catch (DatabaseException exception) {
             // Защищает от гонки, если связанная заявка появилась после предварительной проверки.
             if ("23503".equals(exception.getSqlState()) || "23001".equals(exception.getSqlState())) {
-                throw new IllegalStateException(
-                        "Нельзя удалить клиента с ID " + id + ": у него есть связанные заявки",
-                        exception
-                );
+                throw new ClientHasRequestsException(id, exception);
             }
             throw exception;
         }
@@ -85,13 +85,13 @@ public class ClientService {
 
     private void throwIfDuplicateContact(DatabaseException exception) {
         if ("23505".equals(exception.getSqlState())) {
-            throw new IllegalStateException("Клиент с таким телефоном или email уже существует", exception);
+            throw new BusinessException("Клиент с таким телефоном или email уже существует", exception);
         }
     }
 
     private void validateId(Long id) {
         if (id == null || id <= 0) {
-            throw new IllegalArgumentException("ID клиента должен быть положительным числом");
+            throw new InvalidClientException("ID клиента должен быть положительным числом");
         }
     }
 }

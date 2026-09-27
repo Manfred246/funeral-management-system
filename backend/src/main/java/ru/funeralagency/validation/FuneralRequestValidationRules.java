@@ -1,6 +1,8 @@
 package ru.funeralagency.validation;
 
 import org.springframework.util.StringUtils;
+import ru.funeralagency.exception.InvalidFuneralRequestException;
+import ru.funeralagency.exception.BusinessException;
 import ru.funeralagency.model.FuneralRequest;
 import ru.funeralagency.model.RequestStatus;
 
@@ -39,53 +41,53 @@ public final class FuneralRequestValidationRules {
 
     private static void validateCommon(FuneralRequest request) {
         if (request == null) {
-            throw new IllegalArgumentException("Заявка не может быть null");
+            throw new InvalidFuneralRequestException("Заявка не может быть null");
         }
         if (request.getClientId() == null || request.getClientId() <= 0) {
-            throw new IllegalArgumentException("ID клиента должен быть положительным числом");
+            throw new InvalidFuneralRequestException("ID клиента должен быть положительным числом");
         }
         if (!StringUtils.hasText(request.getDeceasedFullName())) {
-            throw new IllegalArgumentException("ФИО умершего обязательно");
+            throw new InvalidFuneralRequestException("ФИО умершего обязательно");
         }
         if (request.getDeceasedFullName().length() > MAX_DECEASED_FULL_NAME_LENGTH) {
-            throw new IllegalArgumentException(
+            throw new InvalidFuneralRequestException(
                     "ФИО умершего не должно превышать "
                             + MAX_DECEASED_FULL_NAME_LENGTH
                             + " символов"
             );
         }
         if (request.getCeremonyDate() == null) {
-            throw new IllegalArgumentException("Дата церемонии обязательна");
+            throw new InvalidFuneralRequestException("Дата церемонии обязательна");
         }
         if (request.getCeremonyType() == null) {
-            throw new IllegalArgumentException("Тип церемонии обязателен");
+            throw new InvalidFuneralRequestException("Тип церемонии обязателен");
         }
         if (request.getStatus() == null) {
-            throw new IllegalArgumentException("Статус заявки обязателен");
+            throw new InvalidFuneralRequestException("Статус заявки обязателен");
         }
         if (request.getPrice() == null) {
-            throw new IllegalArgumentException("Стоимость заявки обязательна");
+            throw new InvalidFuneralRequestException("Стоимость заявки обязательна");
         }
         if (request.getPrice().compareTo(BigDecimal.ZERO) < 0) {
-            throw new IllegalArgumentException("Стоимость заявки не может быть отрицательной");
+            throw new InvalidFuneralRequestException("Стоимость заявки не может быть отрицательной");
         }
         if (request.getPrice().compareTo(MAX_PRICE) > 0) {
-            throw new IllegalArgumentException("Стоимость не должна превышать " + MAX_PRICE);
+            throw new InvalidFuneralRequestException("Стоимость не должна превышать " + MAX_PRICE);
         }
         if (request.getPrice().stripTrailingZeros().scale() > 2) {
-            throw new IllegalArgumentException("Стоимость должна быть указана с точностью до копейки");
+            throw new InvalidFuneralRequestException("Стоимость должна быть указана с точностью до копейки");
         }
     }
 
     private static void rejectPastDate(LocalDate ceremonyDate) {
         if (ceremonyDate.isBefore(LocalDate.now())) {
-            throw new IllegalArgumentException("Дата новой церемонии не может находиться в прошлом");
+            throw new InvalidFuneralRequestException("Дата новой церемонии не может находиться в прошлом");
         }
     }
 
     public static void validateStatusTransition(RequestStatus current, RequestStatus next) {
         if (current == null || next == null) {
-            throw new IllegalArgumentException("Статус заявки обязателен");
+            throw new InvalidFuneralRequestException("Статус заявки обязателен");
         }
 
         boolean forbidden = (current == RequestStatus.NEW && next == RequestStatus.COMPLETED)
@@ -93,7 +95,7 @@ public final class FuneralRequestValidationRules {
                 || (current == RequestStatus.CANCELLED && next == RequestStatus.IN_PROGRESS);
 
         if (forbidden) {
-            throw new IllegalStateException(
+            throw new BusinessException(
                     "Недопустимый переход статуса: " + current + " -> " + next
             );
         }
