@@ -198,6 +198,36 @@ public class JdbcFuneralRequestRepository implements FuneralRequestRepository {
     }
 
     @Override
+    public List<FuneralRequest> findFiltered(RequestStatus status, CeremonyType type,
+                                             LocalDate dateFrom, LocalDate dateTo) {
+        String sql = SELECT_SQL + """
+                 WHERE (CAST(? AS INTEGER) IS NULL OR status_id = ?)
+                   AND (CAST(? AS INTEGER) IS NULL OR ceremony_type_id = ?)
+                   AND (CAST(? AS DATE) IS NULL OR ceremony_date >= ?)
+                   AND (CAST(? AS DATE) IS NULL OR ceremony_date <= ?)
+                 ORDER BY id
+                """;
+        try (Connection connection = dataSource.getConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            Integer statusId = status == null ? null : status.getDatabaseId();
+            Integer typeId = type == null ? null : type.getDatabaseId();
+            statement.setObject(1, statusId, Types.INTEGER);
+            statement.setObject(2, statusId, Types.INTEGER);
+            statement.setObject(3, typeId, Types.INTEGER);
+            statement.setObject(4, typeId, Types.INTEGER);
+            statement.setObject(5, dateFrom, Types.DATE);
+            statement.setObject(6, dateFrom, Types.DATE);
+            statement.setObject(7, dateTo, Types.DATE);
+            statement.setObject(8, dateTo, Types.DATE);
+            try (ResultSet result = statement.executeQuery()) {
+                return readList(result);
+            }
+        } catch (SQLException e) {
+            throw new DatabaseException("Ошибка при фильтрации заявок", e);
+        }
+    }
+
+    @Override
     public List<FuneralRequest> findAllOrderByPrice(boolean ascending) {
         if (ascending) {
             return findAllSorted("price ASC, id ASC");
