@@ -66,6 +66,9 @@ logs/
 # Local configuration
 # =========================
 
+AGENTS.md
+agents.md
+
 application-local.properties
 application-local.yml
 application-local.yaml
