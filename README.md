@@ -59,7 +59,7 @@ psql -h localhost -p 5432 -U postgres -W -d funeral_management -v ON_ERROR_STOP=
   много заявок. Удаление используемого значения запрещено внешним ключом.
   Оба внешних ключа имеют тип `INTEGER NOT NULL`.
 
-Java enum `CeremonyType` и `RequestStatus` предстоит реализовать в предметной модели
+Java enum `CeremonyType` и `RequestStatus` реализованы в предметной модели
 с явным числовым полем `databaseId`, не через `ordinal()`:
 
 | Enum | Значение | ID в новой схеме |
@@ -116,3 +116,36 @@ mvn -pl backend spring-boot:run
 ```powershell
 mvn clean install
 ```
+
+## Репозитории
+
+Реализованы CRUD клиентов и заявок через прямой JDBC, поиск по ФИО и клиенту,
+фильтры по статусу и типу церемонии, сортировка по дате и цене в обе стороны.
+SQL-ошибки оборачиваются в `DatabaseException`. Подробности для участников команды
+находятся в [контракте репозиториев](docs/repository-contract.md).
+
+## Проверка с PostgreSQL
+
+Обычный `mvn clean install` выполняет тесты, которым не нужен сервер БД.
+Для интеграционных тестов задайте параметры отдельным набором переменных:
+
+```powershell
+$databaseCredential = Get-Credential -UserName postgres -Message 'Пароль PostgreSQL для тестов'
+$env:TEST_DB_URL = 'jdbc:postgresql://localhost:5432/funeral_management'
+$env:TEST_DB_USERNAME = $databaseCredential.UserName
+$env:TEST_DB_PASSWORD = $databaseCredential.GetNetworkCredential().Password
+try {
+    mvn -Ppostgres-it clean install
+} finally {
+    Remove-Item Env:TEST_DB_PASSWORD
+}
+```
+
+URL должен указывать на доступную PostgreSQL БД без параметра `currentSchema`.
+Тесты создают случайную схему `repository_test_...`, проверяют выбор именно этой
+схемы, выполняют в ней `drop → schema → seed` и удаляют её после проверки.
+Пользователю БД нужно право создания схем. Таблицы `public` не изменяются.
+
+Проверяются CRUD, ограничения, поиск, фильтры, сортировки, ошибки подключения,
+запуск Spring Boot и внедрение репозиториев. HTTP-проверка ожидает 404 на `/`,
+поскольку REST-контроллеры пока не реализованы.
