@@ -1,2 +1,151 @@
-# ritual-agency
-Учебный проект, включающий в себя разработку системы для оформления и обработки заявок на ритуальные услуги.
+# Funeral Management System
+
+Учебный проект для оформления и обработки заявок на ритуальные услуги.
+Модули: Spring Boot backend и независимый консольный клиент.
+
+## PostgreSQL
+
+Необходимы установленный PostgreSQL и утилиты `createdb`, `psql` в `PATH`.
+Из корня проекта создайте отдельную пустую базу и примените схему:
+
+```powershell
+createdb -h localhost -p 5432 -U postgres -W funeral_management
+psql -h localhost -p 5432 -U postgres -W -d funeral_management -v ON_ERROR_STOP=1 -f database/schema.sql
+```
+
+Утилиты запросят пароль интерактивно. Если база уже создана, пропустите `createdb`.
+Скрипт схемы выполняется один раз: повторное выполнение завершится ошибкой
+существующих таблиц, без удаления данных. Все изменения схемы выполняются
+в одной транзакции. Backend автоматически схему не создаёт.
+
+Для создания таблиц через DBeaver откройте `database/schema.sql` в SQL-редакторе
+подключения к пустой БД `funeral_management` и выполните весь скрипт.
+Файл сохранён в UTF-8; открывайте его в этой кодировке.
+Для уже настроенной БД повторно выполнять скрипт не нужно.
+
+### Демонстрационные данные и пересоздание
+
+После создания схемы можно заполнить пустую БД шестью клиентами и двенадцатью
+заявками: представлены оба типа церемонии, все пять статусов, разные даты и цены.
+
+```powershell
+psql -h localhost -p 5432 -U postgres -W -d funeral_management -v ON_ERROR_STOP=1 -f database/seed.sql
+```
+
+`seed.sql` предназначен только для пустых таблиц клиентов и заявок. Повторный
+запуск завершится ошибкой без добавления дубликатов. Даты рассчитываются от дня запуска.
+
+`database/drop.sql` удаляет четыре таблицы вместе с данными. Для пересоздания
+**тестовой** БД порядок такой: `drop.sql` → `schema.sql` → `seed.sql`.
+Для рабочей БД этот цикл не нужен: он уничтожит клиентов и заявки.
+
+### Таблицы и связь
+
+- `clients`: ID, ФИО, уникальный телефон, необязательный уникальный email, дата создания.
+- `funeral_requests`: ID, клиент, ФИО умершего, дата и тип церемонии,
+  статус, стоимость, комментарий и дата создания.
+- `ceremony_types`: `id INTEGER` (первичный ключ с автоинкрементом),
+  уникальное русское название `name`.
+  Начальные значения: 1 — «Захоронение», 2 — «Кремация».
+- `request_statuses`: `id INTEGER` (первичный ключ с автоинкрементом),
+  уникальное русское название `name`.
+  Начальные значения: 1 — «Новая», 2 — «Подтверждена», 3 — «В процессе»,
+  4 — «Завершена», 5 — «Отменена».
+- Связь `clients.id → funeral_requests.client_id`: один клиент — много заявок.
+  Заявка обязательно относится к существующему клиенту. Удаление клиента
+  с заявками запрещено; каскадного удаления заявок нет.
+- Связи `ceremony_types.id → funeral_requests.ceremony_type_id` и
+  `request_statuses.id → funeral_requests.status_id`: одно значение справочника —
+  много заявок. Удаление используемого значения запрещено внешним ключом.
+  Оба внешних ключа имеют тип `INTEGER NOT NULL`.
+
+Java enum `CeremonyType` и `RequestStatus` реализованы в предметной модели
+с явным числовым полем `databaseId`, не через `ordinal()`:
+
+| Enum | Значение | ID в новой схеме |
+|---|---|---|
+| `CeremonyType` | `BURIAL` | 1 |
+| `CeremonyType` | `CREMATION` | 2 |
+| `RequestStatus` | `NEW` | 1 |
+| `RequestStatus` | `CONFIRMED` | 2 |
+| `RequestStatus` | `IN_PROGRESS` | 3 |
+| `RequestStatus` | `COMPLETED` | 4 |
+| `RequestStatus` | `CANCELLED` | 5 |
+
+Эти соответствия заданы в `schema.sql` и подтверждены для текущей локальной БД.
+Добавление новых значений требует согласованного изменения Java enum.
+Переходы статусов справочник не проверяет.
+
+Схема содержит `PRIMARY KEY`, `FOREIGN KEY`, `NOT NULL`, `UNIQUE` и `CHECK`.
+Пустые ФИО и телефоны, отрицательная стоимость и неизвестные статусы/типы
+церемонии запрещены. Отсутствующий email следует передавать как `NULL`.
+ID и время создания формируются базой, статус новой заявки по умолчанию — `NEW`.
+
+Проверка даты новой церемонии и допустимых переходов статуса должна выполняться
+в Java Service: исторические заявки могут содержать прошедшую дату.
+Сервисы пока не реализованы. Справочники заполняются при создании схемы;
+тестовые клиенты и заявки находятся в отдельном `seed.sql`.
+
+Проверить созданные таблицы можно командой:
+
+```powershell
+psql -h localhost -p 5432 -U postgres -W -d funeral_management -c '\d clients' -c '\d funeral_requests'
+```
+
+### Подключение backend
+
+По умолчанию backend использует `localhost:5432`, базу `funeral_management`
+и пользователя `postgres`. Другие адрес и пользователь задаются переменными
+`DB_URL` (полный JDBC URL) и `DB_USERNAME`.
+Пароль задайте в переменной окружения `DB_PASSWORD` в конфигурации запуска IDE
+или в текущем PowerShell без сохранения его в истории команд:
+
+```powershell
+$databaseCredential = Get-Credential -UserName postgres -Message 'Пароль PostgreSQL'
+$env:DB_USERNAME = $databaseCredential.UserName
+$env:DB_PASSWORD = $databaseCredential.GetNetworkCredential().Password
+mvn -pl backend spring-boot:run
+```
+
+Пароли не следует записывать в файлы, отслеживаемые Git.
+
+## Сборка
+
+Требуются JDK 21 и Maven. Из корня проекта:
+
+```powershell
+mvn clean install
+```
+
+## Репозитории
+
+Реализованы CRUD клиентов и заявок через прямой JDBC, поиск по ФИО и клиенту,
+фильтры по статусу и типу церемонии, сортировка по дате и цене в обе стороны.
+SQL-ошибки оборачиваются в `DatabaseException`. Подробности для участников команды
+находятся в [контракте репозиториев](docs/repository-contract.md).
+
+## Проверка с PostgreSQL
+
+Обычный `mvn clean install` выполняет тесты, которым не нужен сервер БД.
+Для интеграционных тестов задайте параметры отдельным набором переменных:
+
+```powershell
+$databaseCredential = Get-Credential -UserName postgres -Message 'Пароль PostgreSQL для тестов'
+$env:TEST_DB_URL = 'jdbc:postgresql://localhost:5432/funeral_management'
+$env:TEST_DB_USERNAME = $databaseCredential.UserName
+$env:TEST_DB_PASSWORD = $databaseCredential.GetNetworkCredential().Password
+try {
+    mvn -Ppostgres-it clean install
+} finally {
+    Remove-Item Env:TEST_DB_PASSWORD
+}
+```
+
+URL должен указывать на доступную PostgreSQL БД без параметра `currentSchema`.
+Тесты создают случайную схему `repository_test_...`, проверяют выбор именно этой
+схемы, выполняют в ней `drop → schema → seed` и удаляют её после проверки.
+Пользователю БД нужно право создания схем. Таблицы `public` не изменяются.
+
+Проверяются CRUD, ограничения, поиск, фильтры, сортировки, ошибки подключения,
+запуск Spring Boot и внедрение репозиториев. HTTP-проверка ожидает 404 на `/`,
+поскольку REST-контроллеры пока не реализованы.
