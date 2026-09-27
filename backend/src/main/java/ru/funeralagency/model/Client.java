@@ -1,7 +1,5 @@
 package ru.funeralagency.model;
 
-import java.util.Objects;
-
 /**
  * Клиент ритуального агентства.
  *
@@ -16,10 +14,6 @@ public class Client {
     private String email;
 
     public Client() {
-    }
-
-    public Client(String fullName, String phone, String email) {
-        this(null, fullName, phone, email);
     }
 
     public Client(Long id, String fullName, String phone, String email) {
@@ -59,25 +53,6 @@ public class Client {
 
     public void setEmail(String email) {
         this.email = email;
-    }
-
-    @Override
-    public boolean equals(Object o) {
-        if (this == o) {
-            return true;
-        }
-        if (!(o instanceof Client client)) {
-            return false;
-        }
-        return Objects.equals(id, client.id)
-                && Objects.equals(fullName, client.fullName)
-                && Objects.equals(phone, client.phone)
-                && Objects.equals(email, client.email);
-    }
-
-    @Override
-    public int hashCode() {
-        return Objects.hash(id, fullName, phone, email);
     }
 
     @Override

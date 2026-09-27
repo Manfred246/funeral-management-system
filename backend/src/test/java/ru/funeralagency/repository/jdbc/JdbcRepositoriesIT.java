@@ -116,15 +116,15 @@ class JdbcRepositoriesIT {
 
     @Test
     void clientCrudHandlesGeneratedIdAndNullableEmail() {
-        Client saved = clients.create(new Client("Тестовый клиент", "+79991112233", null));
+        Client saved = clients.create(new Client(null, "Тестовый клиент", "+79991112233", null));
         assertNotNull(saved.getId());
         assertNull(saved.getEmail());
         assertTrue(clients.existsById(saved.getId()));
-        assertEquals(saved, clients.findById(saved.getId()).orElseThrow());
+        assertClientFieldsEqual(saved, clients.findById(saved.getId()).orElseThrow());
         saved.setFullName("Изменённый клиент");
         saved.setEmail("test@example.com");
-        assertEquals(saved, clients.update(saved));
-        assertEquals(saved, clients.findById(saved.getId()).orElseThrow());
+        assertClientFieldsEqual(saved, clients.update(saved));
+        assertClientFieldsEqual(saved, clients.findById(saved.getId()).orElseThrow());
         clients.deleteById(saved.getId());
         assertFalse(clients.existsById(saved.getId()));
         assertTrue(clients.findById(saved.getId()).isEmpty());
@@ -133,7 +133,7 @@ class JdbcRepositoriesIT {
     @Test
     void duplicateClientPhoneIsRejected() {
         DatabaseException error = assertThrows(DatabaseException.class,
-                () -> clients.create(new Client("Другой клиент", "+79990000001", null)));
+                () -> clients.create(new Client(null, "Другой клиент", "+79990000001", null)));
         assertEquals("23505", error.getSqlState());
         assertEquals(6, clients.findAll().size());
     }
@@ -141,7 +141,7 @@ class JdbcRepositoriesIT {
     @Test
     void duplicateClientEmailIsRejected() {
         DatabaseException error = assertThrows(DatabaseException.class,
-                () -> clients.create(new Client("Другой клиент", "+79992223344", "ivanov@example.com")));
+                () -> clients.create(new Client(null, "Другой клиент", "+79992223344", "ivanov@example.com")));
         assertEquals("23505", error.getSqlState());
     }
 
@@ -167,7 +167,7 @@ class JdbcRepositoriesIT {
         assertNotEquals(9999L, saved.getId());
         assertEquals(RequestStatus.NEW, saved.getStatus());
         assertNotEquals(input.getCreatedAt(), saved.getCreatedAt());
-        assertEquals(saved, requests.findById(saved.getId()).orElseThrow());
+        assertRequestFieldsEqual(saved, requests.findById(saved.getId()).orElseThrow());
         LocalDateTime creationTime = saved.getCreatedAt();
         saved.setPrice(new BigDecimal("98765.43"));
         saved.setStatus(RequestStatus.CONFIRMED);
@@ -179,7 +179,7 @@ class JdbcRepositoriesIT {
         assertEquals(saved.getPrice(), updated.getPrice());
         assertEquals(CeremonyType.CREMATION, updated.getCeremonyType());
         assertEquals(RequestStatus.CONFIRMED, updated.getStatus());
-        assertEquals(updated, requests.findById(saved.getId()).orElseThrow());
+        assertRequestFieldsEqual(updated, requests.findById(saved.getId()).orElseThrow());
         requests.deleteById(saved.getId());
         assertTrue(requests.findById(saved.getId()).isEmpty());
     }
@@ -308,8 +308,27 @@ class JdbcRepositoriesIT {
     }
 
     private FuneralRequest newRequest() {
-        return new FuneralRequest(1L, "Тестовый умерший", LocalDate.now().plusDays(5),
-                CeremonyType.BURIAL, new BigDecimal("12345.67"), null);
+        return new FuneralRequest(null, 1L, "Тестовый умерший", LocalDate.now().plusDays(5),
+                CeremonyType.BURIAL, null, new BigDecimal("12345.67"), null, null);
+    }
+
+    private void assertClientFieldsEqual(Client expected, Client actual) {
+        assertEquals(expected.getId(), actual.getId());
+        assertEquals(expected.getFullName(), actual.getFullName());
+        assertEquals(expected.getPhone(), actual.getPhone());
+        assertEquals(expected.getEmail(), actual.getEmail());
+    }
+
+    private void assertRequestFieldsEqual(FuneralRequest expected, FuneralRequest actual) {
+        assertEquals(expected.getId(), actual.getId());
+        assertEquals(expected.getClientId(), actual.getClientId());
+        assertEquals(expected.getDeceasedFullName(), actual.getDeceasedFullName());
+        assertEquals(expected.getCeremonyDate(), actual.getCeremonyDate());
+        assertEquals(expected.getCeremonyType(), actual.getCeremonyType());
+        assertEquals(expected.getStatus(), actual.getStatus());
+        assertEquals(expected.getPrice(), actual.getPrice());
+        assertEquals(expected.getCreatedAt(), actual.getCreatedAt());
+        assertEquals(expected.getComment(), actual.getComment());
     }
 
     private void runScript(String filename) throws Exception {

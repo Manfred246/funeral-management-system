@@ -3,7 +3,6 @@ package ru.funeralagency.model;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.util.Objects;
 
 /** Заявка клиента на организацию ритуальных услуг. */
 public class FuneralRequest {
@@ -19,27 +18,6 @@ public class FuneralRequest {
     private String comment;
 
     public FuneralRequest() {
-    }
-
-    public FuneralRequest(
-            Long clientId,
-            String deceasedFullName,
-            LocalDate ceremonyDate,
-            CeremonyType ceremonyType,
-            BigDecimal price,
-            String comment
-    ) {
-        this(
-                null,
-                clientId,
-                deceasedFullName,
-                ceremonyDate,
-                ceremonyType,
-                null,
-                price,
-                null,
-                comment
-        );
     }
 
     public FuneralRequest(
@@ -134,40 +112,6 @@ public class FuneralRequest {
 
     public void setComment(String comment) {
         this.comment = comment;
-    }
-
-    @Override
-    public boolean equals(Object object) {
-        if (this == object) {
-            return true;
-        }
-        if (!(object instanceof FuneralRequest that)) {
-            return false;
-        }
-        return Objects.equals(id, that.id)
-                && Objects.equals(clientId, that.clientId)
-                && Objects.equals(deceasedFullName, that.deceasedFullName)
-                && Objects.equals(ceremonyDate, that.ceremonyDate)
-                && ceremonyType == that.ceremonyType
-                && status == that.status
-                && Objects.equals(price, that.price)
-                && Objects.equals(createdAt, that.createdAt)
-                && Objects.equals(comment, that.comment);
-    }
-
-    @Override
-    public int hashCode() {
-        return Objects.hash(
-                id,
-                clientId,
-                deceasedFullName,
-                ceremonyDate,
-                ceremonyType,
-                status,
-                price,
-                createdAt,
-                comment
-        );
     }
 
     @Override
