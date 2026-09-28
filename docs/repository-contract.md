@@ -27,8 +27,8 @@ CeremonyType и RequestStatus используют явные databaseId, сов
   проверяет наличие записи, чтобы API мог вернуть 404.
 - findByDeceasedName ищет часть ФИО без учёта регистра; %, _ и ! ищутся буквально.
   Поиск по комментарию не выполняется.
-- findByClientId, findByStatus и findByCeremonyType выполняют отдельные запросы.
-- findFiltered объединяет необязательные статус, тип и границы периода в SQL.
+- findByClientId выполняет поиск заявок выбранного клиента.
+- findFiltered объединяет необязательные статус, тип и границы периода в одном SQL-запросе.
   Границы периода включаются в результат. Порядок дат проверяет Service.
 - findAllOrderByCeremonyDate и findAllOrderByPrice принимают ascending.
   При равных значениях используется ID по возрастанию.
@@ -57,8 +57,10 @@ ID и createdAt отсутствуют в DTO создания. Для клие�
 ClientRequestDto/ClientResponseDto; для заявки — Create/Update/Response DTO.
 HTTP-адреса и правила ввода описаны в README.
 
-ApiExceptionHandler возвращает единый безопасный JSON. Ошибки ввода — 400,
-отсутствующие записи — 404, бизнес-конфликты — 409, ошибки БД/вывода файла — 500.
+Ошибки приложения разделены на ValidationException, EntityNotFoundException,
+BusinessException и DatabaseException. ApiExceptionHandler возвращает единый
+безопасный JSON: ошибки ввода — 400, отсутствующие записи — 404,
+бизнес-конфликты — 409, ошибки БД/вывода файла и непредвиденные ошибки — 500.
 Причины технических ошибок остаются в серверных логах.
 
 ## Проверки и оставшиеся задачи
