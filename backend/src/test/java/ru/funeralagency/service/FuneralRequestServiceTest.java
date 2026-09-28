@@ -5,9 +5,9 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import ru.funeralagency.exception.InvalidFuneralRequestException;
 import ru.funeralagency.exception.BusinessException;
-import ru.funeralagency.exception.FuneralRequestNotFoundException;
+import ru.funeralagency.exception.EntityNotFoundException;
+import ru.funeralagency.exception.ValidationException;
 import ru.funeralagency.model.CeremonyType;
 import ru.funeralagency.model.Client;
 import ru.funeralagency.model.FuneralRequest;
@@ -70,7 +70,7 @@ class FuneralRequestServiceTest {
         FuneralRequest request = validRequest(null, RequestStatus.NEW);
         when(clientRepository.findById(1L)).thenReturn(Optional.empty());
 
-        assertThrows(InvalidFuneralRequestException.class, () -> service.create(request));
+        assertThrows(ValidationException.class, () -> service.create(request));
 
         verify(requestRepository, never()).create(any());
     }
@@ -132,19 +132,19 @@ class FuneralRequestServiceTest {
     @Test
     void missingRequestCannotBeUpdated() {
         when(requestRepository.findById(5L)).thenReturn(Optional.empty());
-        assertThrows(FuneralRequestNotFoundException.class,
+        assertThrows(EntityNotFoundException.class,
                 () -> service.update(5L, validRequest(null, RequestStatus.CONFIRMED)));
         verify(requestRepository, never()).update(any());
     }
 
     @Test
     void rejectsInvalidSearchSortAndDateRangeBeforeQueryingDatabase() {
-        assertThrows(InvalidFuneralRequestException.class, () -> service.search(null, null));
-        assertThrows(InvalidFuneralRequestException.class, () -> service.search("Имя", 1L));
-        assertThrows(InvalidFuneralRequestException.class, () -> service.search(" ", null));
-        assertThrows(InvalidFuneralRequestException.class, () -> service.search(null, 0L));
-        assertThrows(InvalidFuneralRequestException.class, () -> service.sort("unknown", true));
-        assertThrows(InvalidFuneralRequestException.class,
+        assertThrows(ValidationException.class, () -> service.search(null, null));
+        assertThrows(ValidationException.class, () -> service.search("Имя", 1L));
+        assertThrows(ValidationException.class, () -> service.search(" ", null));
+        assertThrows(ValidationException.class, () -> service.search(null, 0L));
+        assertThrows(ValidationException.class, () -> service.sort("unknown", true));
+        assertThrows(ValidationException.class,
                 () -> service.filter(null, null, LocalDate.now(), LocalDate.now().minusDays(1)));
         org.mockito.Mockito.verifyNoInteractions(requestRepository);
     }

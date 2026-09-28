@@ -1,8 +1,8 @@
 package ru.funeralagency.validation;
 
 import org.springframework.util.StringUtils;
-import ru.funeralagency.exception.InvalidFuneralRequestException;
 import ru.funeralagency.exception.BusinessException;
+import ru.funeralagency.exception.ValidationException;
 import ru.funeralagency.model.FuneralRequest;
 import ru.funeralagency.model.RequestStatus;
 
@@ -41,53 +41,53 @@ public final class FuneralRequestValidationRules {
 
     private static void validateCommon(FuneralRequest request) {
         if (request == null) {
-            throw new InvalidFuneralRequestException("Заявка не может быть null");
+            throw new ValidationException("Заявка не может быть null");
         }
         if (request.getClientId() == null || request.getClientId() <= 0) {
-            throw new InvalidFuneralRequestException("ID клиента должен быть положительным числом");
+            throw new ValidationException("ID клиента должен быть положительным числом");
         }
         if (!StringUtils.hasText(request.getDeceasedFullName())) {
-            throw new InvalidFuneralRequestException("ФИО умершего обязательно");
+            throw new ValidationException("ФИО умершего обязательно");
         }
         if (request.getDeceasedFullName().length() > MAX_DECEASED_FULL_NAME_LENGTH) {
-            throw new InvalidFuneralRequestException(
+            throw new ValidationException(
                     "ФИО умершего не должно превышать "
                             + MAX_DECEASED_FULL_NAME_LENGTH
                             + " символов"
             );
         }
         if (request.getCeremonyDate() == null) {
-            throw new InvalidFuneralRequestException("Дата церемонии обязательна");
+            throw new ValidationException("Дата церемонии обязательна");
         }
         if (request.getCeremonyType() == null) {
-            throw new InvalidFuneralRequestException("Тип церемонии обязателен");
+            throw new ValidationException("Тип церемонии обязателен");
         }
         if (request.getStatus() == null) {
-            throw new InvalidFuneralRequestException("Статус заявки обязателен");
+            throw new ValidationException("Статус заявки обязателен");
         }
         if (request.getPrice() == null) {
-            throw new InvalidFuneralRequestException("Стоимость заявки обязательна");
+            throw new ValidationException("Стоимость заявки обязательна");
         }
         if (request.getPrice().compareTo(BigDecimal.ZERO) < 0) {
-            throw new InvalidFuneralRequestException("Стоимость заявки не может быть отрицательной");
+            throw new ValidationException("Стоимость заявки не может быть отрицательной");
         }
         if (request.getPrice().compareTo(MAX_PRICE) > 0) {
-            throw new InvalidFuneralRequestException("Стоимость не должна превышать " + MAX_PRICE);
+            throw new ValidationException("Стоимость не должна превышать " + MAX_PRICE);
         }
         if (request.getPrice().stripTrailingZeros().scale() > 2) {
-            throw new InvalidFuneralRequestException("Стоимость должна быть указана с точностью до копейки");
+            throw new ValidationException("Стоимость должна быть указана с точностью до копейки");
         }
     }
 
     private static void rejectPastDate(LocalDate ceremonyDate) {
         if (ceremonyDate.isBefore(LocalDate.now())) {
-            throw new InvalidFuneralRequestException("Дата новой церемонии не может находиться в прошлом");
+            throw new ValidationException("Дата новой церемонии не может находиться в прошлом");
         }
     }
 
     public static void validateStatusTransition(RequestStatus current, RequestStatus next) {
         if (current == null || next == null) {
-            throw new InvalidFuneralRequestException("Статус заявки обязателен");
+            throw new ValidationException("Статус заявки обязателен");
         }
 
         boolean forbidden = (current == RequestStatus.NEW && next == RequestStatus.COMPLETED)

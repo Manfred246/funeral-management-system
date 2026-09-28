@@ -3,7 +3,7 @@ package ru.funeralagency.validation;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
-import ru.funeralagency.exception.InvalidClientException;
+import ru.funeralagency.exception.ValidationException;
 import ru.funeralagency.model.Client;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -30,15 +30,15 @@ class ClientValidationRulesTest {
             "+79991234567abc", "++79991234567", "+1234567890123456", "   "})
     void rejectsInvalidPhones(String phone) {
         Client client = new Client(null, "Иван Иванов", phone, null);
-        assertThrows(InvalidClientException.class, () -> ClientValidationRules.validateAndNormalize(client));
+        assertThrows(ValidationException.class, () -> ClientValidationRules.validateAndNormalize(client));
     }
 
     @Test
     void rejectsBlankAndOverlongNames() {
         Client client = new Client(null, "   ", "+79991234567", null);
-        assertThrows(InvalidClientException.class, () -> ClientValidationRules.validateAndNormalize(client));
+        assertThrows(ValidationException.class, () -> ClientValidationRules.validateAndNormalize(client));
         client.setFullName("Я".repeat(256));
-        assertThrows(InvalidClientException.class, () -> ClientValidationRules.validateAndNormalize(client));
+        assertThrows(ValidationException.class, () -> ClientValidationRules.validateAndNormalize(client));
         client.setFullName("Я".repeat(255));
         assertDoesNotThrow(() -> ClientValidationRules.validateAndNormalize(client));
     }
@@ -46,7 +46,7 @@ class ClientValidationRulesTest {
     @Test
     void rejectsMalformedEmailAndMissingClient() {
         Client client = new Client(null, "Иван Иванов", "+79991234567", "ivan@example");
-        assertThrows(InvalidClientException.class, () -> ClientValidationRules.validateAndNormalize(client));
-        assertThrows(InvalidClientException.class, () -> ClientValidationRules.validateAndNormalize(null));
+        assertThrows(ValidationException.class, () -> ClientValidationRules.validateAndNormalize(client));
+        assertThrows(ValidationException.class, () -> ClientValidationRules.validateAndNormalize(null));
     }
 }

@@ -1,11 +1,10 @@
 package ru.funeralagency.service;
 
-import ru.funeralagency.exception.DatabaseException;
-import ru.funeralagency.exception.BusinessException;
 import org.springframework.stereotype.Service;
-import ru.funeralagency.exception.ClientHasRequestsException;
-import ru.funeralagency.exception.ClientNotFoundException;
-import ru.funeralagency.exception.InvalidClientException;
+import ru.funeralagency.exception.BusinessException;
+import ru.funeralagency.exception.DatabaseException;
+import ru.funeralagency.exception.EntityNotFoundException;
+import ru.funeralagency.exception.ValidationException;
 import ru.funeralagency.model.Client;
 import ru.funeralagency.repository.ClientRepository;
 import ru.funeralagency.repository.FuneralRequestRepository;
@@ -42,7 +41,9 @@ public class ClientService {
     public Client findById(Long id) {
         validateId(id);
         return clientRepository.findById(id)
-                .orElseThrow(() -> new ClientNotFoundException(id));
+                .orElseThrow(() -> new EntityNotFoundException(
+                        "Клиент с ID " + id + " не найден"
+                ));
     }
 
     public List<Client> findAll() {
@@ -70,14 +71,19 @@ public class ClientService {
         // Проверка до удаления позволяет вернуть корректный 404 вместо успешного DELETE для отсутствующего ID.
         findById(id);
         if (requestRepository.existsByClientId(id)) {
-            throw new ClientHasRequestsException(id);
+            throw new BusinessException(
+                    "Нельзя удалить клиента с ID " + id + ", пока у него есть заявки"
+            );
         }
         try {
             clientRepository.deleteById(id);
         } catch (DatabaseException exception) {
             // Защищает от гонки, если связанная заявка появилась после предварительной проверки.
             if ("23503".equals(exception.getSqlState()) || "23001".equals(exception.getSqlState())) {
-                throw new ClientHasRequestsException(id, exception);
+                throw new BusinessException(
+                        "Нельзя удалить клиента с ID " + id + ", пока у него есть заявки",
+                        exception
+                );
             }
             throw exception;
         }
@@ -91,7 +97,8 @@ public class ClientService {
 
     private void validateId(Long id) {
         if (id == null || id <= 0) {
-            throw new InvalidClientException("ID клиента должен быть положительным числом");
+            throw new ValidationException("ID клиента должен быть положительным числом");
         }
     }
+
 }

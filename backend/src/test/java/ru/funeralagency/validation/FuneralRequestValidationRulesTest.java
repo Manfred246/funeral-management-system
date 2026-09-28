@@ -3,7 +3,7 @@ package ru.funeralagency.validation;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
-import ru.funeralagency.exception.InvalidFuneralRequestException;
+import ru.funeralagency.exception.ValidationException;
 import ru.funeralagency.exception.BusinessException;
 import ru.funeralagency.model.CeremonyType;
 import ru.funeralagency.model.FuneralRequest;
@@ -30,7 +30,7 @@ class FuneralRequestValidationRulesTest {
         request.setDeceasedFullName("   ");
 
         assertThrows(
-                InvalidFuneralRequestException.class,
+                ValidationException.class,
                 () -> FuneralRequestValidationRules.validate(request)
         );
     }
@@ -41,7 +41,7 @@ class FuneralRequestValidationRulesTest {
         request.setPrice(new BigDecimal("-0.01"));
 
         assertThrows(
-                InvalidFuneralRequestException.class,
+                ValidationException.class,
                 () -> FuneralRequestValidationRules.validate(request)
         );
     }
@@ -52,7 +52,7 @@ class FuneralRequestValidationRulesTest {
         request.setCeremonyDate(LocalDate.now().minusDays(1));
 
         assertThrows(
-                InvalidFuneralRequestException.class,
+                ValidationException.class,
                 () -> FuneralRequestValidationRules.validate(request)
         );
     }
@@ -125,7 +125,7 @@ class FuneralRequestValidationRulesTest {
     void rejectsPricesThatCannotBeStoredExactly(String price) {
         FuneralRequest request = validRequest();
         request.setPrice(new BigDecimal(price));
-        assertThrows(InvalidFuneralRequestException.class, () -> FuneralRequestValidationRules.validate(request));
+        assertThrows(ValidationException.class, () -> FuneralRequestValidationRules.validate(request));
     }
 
     @ParameterizedTest
@@ -138,16 +138,16 @@ class FuneralRequestValidationRulesTest {
 
     @Test
     void rejectsMissingRequiredFields() {
-        assertThrows(InvalidFuneralRequestException.class, () -> FuneralRequestValidationRules.validate(null));
+        assertThrows(ValidationException.class, () -> FuneralRequestValidationRules.validate(null));
         FuneralRequest request = validRequest();
         request.setClientId(0L);
-        assertThrows(InvalidFuneralRequestException.class, () -> FuneralRequestValidationRules.validate(request));
+        assertThrows(ValidationException.class, () -> FuneralRequestValidationRules.validate(request));
         request.setClientId(1L);
         request.setCeremonyType(null);
-        assertThrows(InvalidFuneralRequestException.class, () -> FuneralRequestValidationRules.validate(request));
+        assertThrows(ValidationException.class, () -> FuneralRequestValidationRules.validate(request));
         request.setCeremonyType(CeremonyType.BURIAL);
         request.setPrice(null);
-        assertThrows(InvalidFuneralRequestException.class, () -> FuneralRequestValidationRules.validate(request));
+        assertThrows(ValidationException.class, () -> FuneralRequestValidationRules.validate(request));
     }
 
     @Test
@@ -155,7 +155,7 @@ class FuneralRequestValidationRulesTest {
         FuneralRequest request = validRequest();
         LocalDate previousDate = request.getCeremonyDate();
         request.setCeremonyDate(LocalDate.now().minusDays(1));
-        assertThrows(InvalidFuneralRequestException.class,
+        assertThrows(ValidationException.class,
                 () -> FuneralRequestValidationRules.validateForUpdate(request, previousDate));
     }
 }

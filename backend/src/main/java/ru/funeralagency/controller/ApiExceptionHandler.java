@@ -1,26 +1,22 @@
 package ru.funeralagency.controller;
 
 import jakarta.servlet.http.HttpServletRequest;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import ru.funeralagency.dto.ApiErrorResponse;
-import ru.funeralagency.exception.ClientHasRequestsException;
-import ru.funeralagency.exception.ClientNotFoundException;
-import ru.funeralagency.exception.FuneralRequestNotFoundException;
-import ru.funeralagency.exception.InvalidClientException;
-import ru.funeralagency.exception.InvalidFuneralRequestException;
 import ru.funeralagency.exception.BusinessException;
 import ru.funeralagency.exception.DatabaseException;
 import ru.funeralagency.exception.EntityNotFoundException;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.web.bind.MissingServletRequestParameterException;
-import java.io.UncheckedIOException;
+import ru.funeralagency.exception.ValidationException;
 
+import java.io.UncheckedIOException;
 import java.time.Instant;
 
 /** Преобразует доменные исключения в стабильные и понятные ответы REST API. */
@@ -28,26 +24,25 @@ import java.time.Instant;
 public class ApiExceptionHandler {
     private static final Logger logger = LoggerFactory.getLogger(ApiExceptionHandler.class);
 
-    @ExceptionHandler({InvalidClientException.class, InvalidFuneralRequestException.class})
+    @ExceptionHandler(ValidationException.class)
     public ResponseEntity<ApiErrorResponse> handleValidationError(
-            RuntimeException exception,
+            ValidationException exception,
             HttpServletRequest request
     ) {
         return response(HttpStatus.BAD_REQUEST, exception.getMessage(), request);
     }
 
-    @ExceptionHandler({ClientNotFoundException.class, FuneralRequestNotFoundException.class,
-            EntityNotFoundException.class})
+    @ExceptionHandler(EntityNotFoundException.class)
     public ResponseEntity<ApiErrorResponse> handleNotFound(
-            RuntimeException exception,
+            EntityNotFoundException exception,
             HttpServletRequest request
     ) {
         return response(HttpStatus.NOT_FOUND, exception.getMessage(), request);
     }
 
-    @ExceptionHandler({ClientHasRequestsException.class, BusinessException.class})
+    @ExceptionHandler(BusinessException.class)
     public ResponseEntity<ApiErrorResponse> handleConflict(
-            RuntimeException exception,
+            BusinessException exception,
             HttpServletRequest request
     ) {
         return response(HttpStatus.CONFLICT, exception.getMessage(), request);
@@ -68,21 +63,6 @@ public class ApiExceptionHandler {
                 "Некорректное значение параметра: " + exception.getName(),
                 request
         );
-    }
-
-    private ResponseEntity<ApiErrorResponse> response(
-            HttpStatus status,
-            String message,
-            HttpServletRequest request
-    ) {
-        ApiErrorResponse body = new ApiErrorResponse(
-                Instant.now(),
-                status.value(),
-                status.getReasonPhrase(),
-                message,
-                request.getRequestURI()
-        );
-        return ResponseEntity.status(status).body(body);
     }
 
     @ExceptionHandler(DatabaseException.class)
@@ -106,5 +86,33 @@ public class ApiExceptionHandler {
             MissingServletRequestParameterException exception, HttpServletRequest request
     ) {
         return response(HttpStatus.BAD_REQUEST, "Не указан параметр: " + exception.getParameterName(), request);
+    }
+
+    @ExceptionHandler(Exception.class)
+    public ResponseEntity<ApiErrorResponse> handleUnexpectedError(
+            Exception exception,
+            HttpServletRequest request
+    ) {
+        logger.error("Непредвиденная ошибка сервера", exception);
+        return response(
+                HttpStatus.INTERNAL_SERVER_ERROR,
+                "Внутренняя ошибка сервера",
+                request
+        );
+    }
+
+    private ResponseEntity<ApiErrorResponse> response(
+            HttpStatus status,
+            String message,
+            HttpServletRequest request
+    ) {
+        ApiErrorResponse body = new ApiErrorResponse(
+                Instant.now(),
+                status.value(),
+                status.getReasonPhrase(),
+                message,
+                request.getRequestURI()
+        );
+        return ResponseEntity.status(status).body(body);
     }
 }

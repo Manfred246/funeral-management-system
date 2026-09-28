@@ -1,8 +1,8 @@
 package ru.funeralagency.service;
 
 import org.springframework.stereotype.Service;
-import ru.funeralagency.exception.FuneralRequestNotFoundException;
-import ru.funeralagency.exception.InvalidFuneralRequestException;
+import ru.funeralagency.exception.EntityNotFoundException;
+import ru.funeralagency.exception.ValidationException;
 import ru.funeralagency.model.CeremonyType;
 import ru.funeralagency.model.FuneralRequest;
 import ru.funeralagency.model.RequestStatus;
@@ -30,7 +30,7 @@ public class FuneralRequestService {
 
     public FuneralRequest create(FuneralRequest request) {
         if (request == null) {
-            throw new InvalidFuneralRequestException("Заявка не может быть null");
+            throw new ValidationException("Заявка не может быть null");
         }
         request.setId(null);
         request.setStatus(RequestStatus.NEW);
@@ -47,13 +47,15 @@ public class FuneralRequestService {
     public FuneralRequest findById(Long id) {
         validateId(id);
         return requestRepository.findById(id)
-                .orElseThrow(() -> new FuneralRequestNotFoundException(id));
+                .orElseThrow(() -> new EntityNotFoundException(
+                        "Заявка с ID " + id + " не найдена"
+                ));
     }
 
     public FuneralRequest update(Long id, FuneralRequest request) {
         validateId(id);
         if (request == null) {
-            throw new InvalidFuneralRequestException("Заявка не может быть null");
+            throw new ValidationException("Заявка не может быть null");
         }
 
         FuneralRequest existing = findById(id);
@@ -73,16 +75,16 @@ public class FuneralRequestService {
 
     public List<FuneralRequest> search(String deceasedName, Long clientId) {
         if ((deceasedName == null && clientId == null) || (deceasedName != null && clientId != null)) {
-            throw new InvalidFuneralRequestException("Укажите один параметр поиска: deceasedName или clientId");
+            throw new ValidationException("Укажите один параметр поиска: deceasedName или clientId");
         }
         if (clientId != null) {
             if (clientId <= 0) {
-                throw new InvalidFuneralRequestException("ID клиента должен быть положительным числом");
+                throw new ValidationException("ID клиента должен быть положительным числом");
             }
             return requestRepository.findByClientId(clientId);
         }
         if (deceasedName.isBlank()) {
-            throw new InvalidFuneralRequestException("ФИО для поиска не может быть пустым");
+            throw new ValidationException("ФИО для поиска не может быть пустым");
         }
         return requestRepository.findByDeceasedName(deceasedName.trim());
     }
@@ -94,7 +96,7 @@ public class FuneralRequestService {
             LocalDate dateTo
     ) {
         if (dateFrom != null && dateTo != null && dateFrom.isAfter(dateTo)) {
-            throw new InvalidFuneralRequestException("Начальная дата не может быть позже конечной");
+            throw new ValidationException("Начальная дата не может быть позже конечной");
         }
         return requestRepository.findFiltered(status, ceremonyType, dateFrom, dateTo);
     }
@@ -106,7 +108,7 @@ public class FuneralRequestService {
         if ("price".equals(field)) {
             return requestRepository.findAllOrderByPrice(ascending);
         }
-        throw new InvalidFuneralRequestException("Сортировать можно по ceremonyDate или price");
+        throw new ValidationException("Сортировать можно по ceremonyDate или price");
     }
 
     private void normalizeAndValidate(FuneralRequest request) {
@@ -116,13 +118,13 @@ public class FuneralRequestService {
 
     private void ensureClientExists(Long clientId) {
         if (clientRepository.findById(clientId).isEmpty()) {
-            throw new InvalidFuneralRequestException("Нельзя создать заявку для несуществующего клиента");
+            throw new ValidationException("Нельзя создать заявку для несуществующего клиента");
         }
     }
 
     private void validateId(Long id) {
         if (id == null || id <= 0) {
-            throw new InvalidFuneralRequestException("ID заявки должен быть положительным числом");
+            throw new ValidationException("ID заявки должен быть положительным числом");
         }
     }
 }
