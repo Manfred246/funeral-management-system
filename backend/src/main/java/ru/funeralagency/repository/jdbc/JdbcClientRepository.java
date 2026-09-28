@@ -113,20 +113,6 @@ public class JdbcClientRepository implements ClientRepository {
         }
     }
 
-    @Override
-    public boolean existsById(long id) {
-        String sql = "SELECT 1 FROM clients WHERE id = ?";
-        try (Connection connection = dataSource.getConnection();
-             PreparedStatement statement = connection.prepareStatement(sql)) {
-            statement.setLong(1, id);
-            try (ResultSet result = statement.executeQuery()) {
-                return result.next();
-            }
-        } catch (SQLException e) {
-            throw new DatabaseException("Ошибка при проверке клиента", e);
-        }
-    }
-
     private Client mapRow(ResultSet result) throws SQLException {
         return new Client(
                 result.getLong("id"),

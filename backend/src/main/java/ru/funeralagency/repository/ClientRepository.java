@@ -15,6 +15,4 @@ public interface ClientRepository {
     Client update(Client client);
 
     void deleteById(long id);
-
-    boolean existsById(long id);
 }

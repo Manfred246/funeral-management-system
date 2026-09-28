@@ -100,10 +100,10 @@ class JdbcRepositoriesIT {
         assertEquals(6, clients.findAll().size());
         assertEquals(12, requests.findAll().size());
         for (RequestStatus status : RequestStatus.values()) {
-            assertFalse(requests.findByStatus(status).isEmpty());
+            assertFalse(requests.findFiltered(status, null, null, null).isEmpty());
         }
         for (CeremonyType type : CeremonyType.values()) {
-            assertEquals(6, requests.findByCeremonyType(type).size());
+            assertEquals(6, requests.findFiltered(null, type, null, null).size());
         }
     }
 
@@ -119,14 +119,13 @@ class JdbcRepositoriesIT {
         Client saved = clients.create(new Client(null, "Тестовый клиент", "+79991112233", null));
         assertNotNull(saved.getId());
         assertNull(saved.getEmail());
-        assertTrue(clients.existsById(saved.getId()));
+        assertTrue(clients.findById(saved.getId()).isPresent());
         assertClientFieldsEqual(saved, clients.findById(saved.getId()).orElseThrow());
         saved.setFullName("Изменённый клиент");
         saved.setEmail("test@example.com");
         assertClientFieldsEqual(saved, clients.update(saved));
         assertClientFieldsEqual(saved, clients.findById(saved.getId()).orElseThrow());
         clients.deleteById(saved.getId());
-        assertFalse(clients.existsById(saved.getId()));
         assertTrue(clients.findById(saved.getId()).isEmpty());
     }
 
@@ -198,7 +197,7 @@ class JdbcRepositoriesIT {
         assertFalse(requests.existsByClientId(9999));
         DatabaseException error = assertThrows(DatabaseException.class, () -> clients.deleteById(1));
         assertTrue(List.of("23503", "23001").contains(error.getSqlState()));
-        assertTrue(clients.existsById(1));
+        assertTrue(clients.findById(1).isPresent());
         assertEquals(12, requests.findAll().size());
     }
 
@@ -240,10 +239,14 @@ class JdbcRepositoriesIT {
         for (FuneralRequest request : clientRequests) {
             assertEquals(2L, request.getClientId());
         }
-        for (FuneralRequest request : requests.findByStatus(RequestStatus.COMPLETED)) {
+        for (FuneralRequest request : requests.findFiltered(
+                RequestStatus.COMPLETED, null, null, null
+        )) {
             assertEquals(RequestStatus.COMPLETED, request.getStatus());
         }
-        for (FuneralRequest request : requests.findByCeremonyType(CeremonyType.CREMATION)) {
+        for (FuneralRequest request : requests.findFiltered(
+                null, CeremonyType.CREMATION, null, null
+        )) {
             assertEquals(CeremonyType.CREMATION, request.getCeremonyType());
         }
     }

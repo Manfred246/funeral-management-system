@@ -162,34 +162,6 @@ public class JdbcFuneralRequestRepository implements FuneralRequestRepository {
     }
 
     @Override
-    public List<FuneralRequest> findByStatus(RequestStatus status) {
-        String sql = SELECT_SQL + " WHERE status_id = ? ORDER BY id";
-        try (Connection connection = dataSource.getConnection();
-             PreparedStatement statement = connection.prepareStatement(sql)) {
-            statement.setInt(1, status.getDatabaseId());
-            try (ResultSet result = statement.executeQuery()) {
-                return readList(result);
-            }
-        } catch (SQLException e) {
-            throw new DatabaseException("Ошибка при фильтрации заявок по статусу", e);
-        }
-    }
-
-    @Override
-    public List<FuneralRequest> findByCeremonyType(CeremonyType type) {
-        String sql = SELECT_SQL + " WHERE ceremony_type_id = ? ORDER BY id";
-        try (Connection connection = dataSource.getConnection();
-             PreparedStatement statement = connection.prepareStatement(sql)) {
-            statement.setInt(1, type.getDatabaseId());
-            try (ResultSet result = statement.executeQuery()) {
-                return readList(result);
-            }
-        } catch (SQLException e) {
-            throw new DatabaseException("Ошибка при фильтрации заявок по типу церемонии", e);
-        }
-    }
-
-    @Override
     public List<FuneralRequest> findAllOrderByCeremonyDate(boolean ascending) {
         if (ascending) {
             return findAllSorted("ceremony_date ASC, id ASC");

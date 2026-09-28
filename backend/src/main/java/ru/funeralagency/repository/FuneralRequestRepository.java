@@ -25,10 +25,6 @@ public interface FuneralRequestRepository {
 
     List<FuneralRequest> findByClientId(long clientId);
 
-    List<FuneralRequest> findByStatus(RequestStatus status);
-
-    List<FuneralRequest> findByCeremonyType(CeremonyType type);
-
     List<FuneralRequest> findFiltered(RequestStatus status, CeremonyType type,
                                       LocalDate dateFrom, LocalDate dateTo);
 
