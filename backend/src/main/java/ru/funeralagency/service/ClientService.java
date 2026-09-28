@@ -72,7 +72,7 @@ public class ClientService {
         findById(id);
         if (requestRepository.existsByClientId(id)) {
             throw new BusinessException(
-                    "Нельзя удалить клиента с ID " + id + ", пока у него есть заявки"
+                    clientHasRequestsMessage(id)
             );
         }
         try {
@@ -81,7 +81,7 @@ public class ClientService {
             // Защищает от гонки, если связанная заявка появилась после предварительной проверки.
             if ("23503".equals(exception.getSqlState()) || "23001".equals(exception.getSqlState())) {
                 throw new BusinessException(
-                        "Нельзя удалить клиента с ID " + id + ", пока у него есть заявки",
+                        clientHasRequestsMessage(id),
                         exception
                 );
             }
@@ -99,6 +99,10 @@ public class ClientService {
         if (id == null || id <= 0) {
             throw new ValidationException("ID клиента должен быть положительным числом");
         }
+    }
+
+    private String clientHasRequestsMessage(Long id) {
+        return "Нельзя удалить клиента с ID " + id + ": у него есть связанные заявки";
     }
 
 }

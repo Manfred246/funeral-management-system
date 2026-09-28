@@ -10,6 +10,7 @@ import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 import ru.funeralagency.dto.ApiErrorResponse;
 import ru.funeralagency.exception.BusinessException;
 import ru.funeralagency.exception.DatabaseException;
@@ -86,6 +87,11 @@ public class ApiExceptionHandler {
             MissingServletRequestParameterException exception, HttpServletRequest request
     ) {
         return response(HttpStatus.BAD_REQUEST, "Не указан параметр: " + exception.getParameterName(), request);
+    }
+
+    @ExceptionHandler(NoResourceFoundException.class)
+    public ResponseEntity<ApiErrorResponse> handleMissingResource(HttpServletRequest request) {
+        return response(HttpStatus.NOT_FOUND, "Ресурс не найден", request);
     }
 
     @ExceptionHandler(Exception.class)
