@@ -1,8 +1,10 @@
 package ru.funeralagency;
 
+import ru.funeralagency.ui.ConsoleMenu;
+
 public class Main {
 
     public static void main(String[] args) {
-        System.out.println("Funeral Management System - Console Client");
+        new ConsoleMenu().run();
     }
 }
