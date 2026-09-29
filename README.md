@@ -118,6 +118,28 @@ mvn -pl backend spring-boot:run
 mvn clean install
 ```
 
+### Запуск консольного клиента
+
+Сначала запустите backend. Затем в другом терминале соберите и запустите
+консольный клиент:
+
+```powershell
+mvn -pl console-client package
+java -jar console-client/target/console-client-1.0-SNAPSHOT.jar
+```
+
+По умолчанию клиент обращается к `http://localhost:8080`. Другой адрес можно
+задать переменной окружения `FUNERAL_API_URL`:
+
+```powershell
+$env:FUNERAL_API_URL = 'http://localhost:8080'
+java -jar console-client/target/console-client-1.0-SNAPSHOT.jar
+```
+
+Клиент работает с backend только через REST API. В меню доступны CRUD клиентов
+и заявок, поиск, фильтрация, сортировка, статистика и экспорт заявок. XLSX-файл
+сохраняется в `exports/funeral-requests.xlsx`.
+
 ## Репозитории
 
 Реализованы CRUD клиентов и заявок через прямой JDBC, поиск по ФИО и клиенту,
@@ -213,4 +235,3 @@ SQL, технические подробности и stack trace в ответ 
 
 Статистика содержит общее количество клиентов и заявок, количество новых,
 завершённых и отменённых заявок, а также среднюю стоимость заявки.
-Полноценный консольный HTTP-клиент остаётся задачей следующего этапа.
