@@ -51,6 +51,7 @@ replay_pid*
 
 *.log
 logs/
+exports/
 
 
 # =========================
