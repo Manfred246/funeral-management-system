@@ -5,5 +5,5 @@ public enum RequestStatus {
     CONFIRMED,
     IN_PROGRESS,
     COMPLETED,
-    CANCELED
+    CANCELLED
 }

@@ -17,11 +17,13 @@ public class ApiClient {
     private final ObjectMapper objectMapper;
     private final String baseUrl;
 
-    public ApiClient(){
-        this.baseUrl = "http://localhost:8080";
+    public ApiClient() {
+        this.baseUrl = getBaseUrl();
+
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(5))
                 .build();
+
         this.objectMapper = new ObjectMapper();
         this.objectMapper.registerModule(new JavaTimeModule());
     }
@@ -41,20 +43,45 @@ public class ApiClient {
         try {
             HttpResponse<String> response = httpClient.send(
                     request,
-                    HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8)
+                    HttpResponse.BodyHandlers.ofString(
+                            StandardCharsets.UTF_8
+                    )
             );
 
-            if (response.statusCode() < 200 || response.statusCode() > 300) {
-                throw new IOException(
-                        "Ошибка сервера: HTTP "
-                        + response.statusCode()
-                );
-            }
+            checkStatus(response.statusCode(), response.body());
 
             return response.body();
-        } catch (ConnectException e){
-            throw new IOException("Не удалось подключиться к backend", e);
+        } catch (ConnectException e) {
+            throw new IOException("Не удалось подключиться к серверу" + baseUrl, e);
         }
+    }
+
+    private void checkStatus(int statusCode, String responseBody) throws IOException {
+        if (statusCode >= 200 && statusCode < 300) { return; }
+
+        String message = "Ошибка сервера: HTTP " + statusCode;
+
+        try {
+            var json = objectMapper.readTree(responseBody);
+
+            String serverMessage = json.path("message").asText("");
+
+            if (serverMessage.isBlank()){
+                message = serverMessage;
+            }
+        } catch (Exception ignored){}
+
+        throw new IOException(message);
+    }
+
+    private static String getBaseUrl(){
+        String url = System.getenv("FUNERAL_API_URL");
+
+        if (url == null || url.isBlank()) {
+            return "http://localhost:8080";
+        }
+
+        return url.trim().replaceAll("/+$", "");
     }
 
     public ObjectMapper getObjectMapper() {

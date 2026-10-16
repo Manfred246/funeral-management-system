@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.control.Button?>
+<?import javafx.scene.control.Label?>
+<?import javafx.scene.control.TableColumn?>
+<?import javafx.scene.control.TableView?>
+<?import javafx.scene.layout.BorderPane?>
+<?import javafx.scene.layout.HBox?>
+<?import javafx.scene.layout.VBox?>
+
+<BorderPane xmlns:fx="http://javafx.com/fxml"
+            fx:controller="ru.funeralagency.controller.MainController"
+            prefWidth="1100"
+            prefHeight="650">
+    <top>
+        <VBox spacing="10">
+
+            <padding>
+                <Insets top="15" right="15" bottom="10" left="15"/>
+            </padding>
+
+            <Label text="Заявки на организацию ритуала" style="-fx-font-size: 24px; -fx-font-weight: bold"/>
+
+            <HBox spacing="10">
+                <Button text="Обновить" onAction="#handleRefresh"/>
+            </HBox>
+
+        </VBox>
+    </top>
+
+    <center>
+
+        <TableView fx:id="requestsTable">
+            <columns>
+                <TableColumn fx:id="idColumn" text="ID" prefWidth="60"/>
+                <TableColumn fx:id="clientIdColumn" text="Клиент" prefWidth="90"/>
+                <TableColumn fx:id="deceasedNameColumn" text="ФИО умершего" prefWidth="250"/>
+                <TableColumn fx:id="ceremonyDateColumn" text="Дата церемонии" prefWidth="140"/>
+                <TableColumn fx:id="ceremonyTypeTableColumn" text="Тип церемонии" prefWidth="150"/>
+                <TableColumn fx:id="statusColumn" text="Статус" prefWidth="150"/>
+                <TableColumn fx:id="priceColumn" text="Стоимость" prefWidth="140"/>
+            </columns>
+        </TableView>
+
+    </center>
+</BorderPane>
