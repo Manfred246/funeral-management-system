@@ -68,7 +68,6 @@ public class ClientService {
 
     public void deleteById(Long id) {
         validateId(id);
-        // Проверка до удаления позволяет вернуть корректный 404 вместо успешного DELETE для отсутствующего ID.
         findById(id);
         if (requestRepository.existsByClientId(id)) {
             throw new BusinessException(
@@ -78,7 +77,6 @@ public class ClientService {
         try {
             clientRepository.deleteById(id);
         } catch (DatabaseException exception) {
-            // Защищает от гонки, если связанная заявка появилась после предварительной проверки.
             if ("23503".equals(exception.getSqlState()) || "23001".equals(exception.getSqlState())) {
                 throw new BusinessException(
                         clientHasRequestsMessage(id),
