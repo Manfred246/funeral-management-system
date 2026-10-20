@@ -16,11 +16,15 @@ public class JavaFxApplication extends Application{
         );
 
         Scene scene = new Scene(loader.load());
+        scene.getStylesheets().add(
+                JavaFxApplication.class.getResource("/ru/funeralagency/css/application.css").toExternalForm()
+        );
 
         stage.setTitle("Funeral Management System");
         stage.setScene(scene);
-        stage.setMinWidth(900);
-        stage.setHeight(600);
+        stage.setMinWidth(960);
+        stage.setMinHeight(600);
+        stage.setHeight(760);
         stage.show();
     }
 }

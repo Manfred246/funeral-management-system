@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.scene.control.Button?>
+<?import javafx.scene.control.ComboBox?>
+<?import javafx.scene.control.DatePicker?>
+<?import javafx.scene.control.Label?>
+<?import javafx.scene.control.ScrollPane?>
+<?import javafx.scene.control.TextArea?>
+<?import javafx.scene.control.TextField?>
+<?import javafx.scene.layout.BorderPane?>
+<?import javafx.scene.layout.ColumnConstraints?>
+<?import javafx.scene.layout.GridPane?>
+<?import javafx.scene.layout.HBox?>
+<?import javafx.scene.layout.VBox?>
+
+<BorderPane xmlns:fx="http://javafx.com/fxml"
+            fx:controller="ru.funeralagency.controller.RequestFormController"
+            styleClass="app-root" prefWidth="660" prefHeight="640">
+    <top>
+        <VBox spacing="8" styleClass="form-header">
+            <Label fx:id="formTitle" text="Новая заявка" styleClass="page-title"/>
+            <Label text="* — обязательные поля" styleClass="muted-label"/>
+        </VBox>
+    </top>
+    <center>
+        <ScrollPane fitToWidth="true" hbarPolicy="NEVER" focusTraversable="false" styleClass="form-scroll">
+            <content>
+                <GridPane hgap="18" vgap="16" styleClass="form-grid">
+                    <columnConstraints>
+                        <ColumnConstraints minWidth="140"/>
+                        <ColumnConstraints hgrow="ALWAYS"/>
+                    </columnConstraints>
+
+                    <Label text="Клиент *" GridPane.rowIndex="0"/>
+                    <ComboBox fx:id="clientComboBox" promptText="Выберите клиента"
+                              maxWidth="Infinity" GridPane.columnIndex="1" GridPane.rowIndex="0"/>
+
+                    <Label text="ФИО умершего *" GridPane.rowIndex="1"/>
+                    <TextField fx:id="deceasedNameField" GridPane.columnIndex="1" GridPane.rowIndex="1"/>
+
+                    <Label text="Дата церемонии *" GridPane.rowIndex="2"/>
+                    <DatePicker fx:id="ceremonyDatePicker" editable="false" promptText="Выберите дату"
+                                maxWidth="Infinity" GridPane.columnIndex="1" GridPane.rowIndex="2"/>
+
+                    <Label text="Тип церемонии *" GridPane.rowIndex="3"/>
+                    <ComboBox fx:id="ceremonyTypeComboBox" promptText="Выберите тип"
+                              maxWidth="Infinity" GridPane.columnIndex="1" GridPane.rowIndex="3"/>
+
+                    <Label text="Стоимость *" GridPane.rowIndex="4"/>
+                    <TextField fx:id="priceField" promptText="Например, 45000.00"
+                               GridPane.columnIndex="1" GridPane.rowIndex="4"/>
+
+                    <Label text="Комментарий" GridPane.valignment="TOP" GridPane.rowIndex="5"/>
+                    <TextArea fx:id="commentArea" prefRowCount="3" wrapText="true"
+                              GridPane.columnIndex="1" GridPane.rowIndex="5"/>
+
+                    <Label fx:id="statusLabel" text="Статус *" visible="false" managed="false"
+                           GridPane.rowIndex="6"/>
+                    <ComboBox fx:id="statusComboBox" promptText="Выберите статус" visible="false" managed="false"
+                              maxWidth="Infinity" GridPane.columnIndex="1" GridPane.rowIndex="6"/>
+                </GridPane>
+            </content>
+        </ScrollPane>
+    </center>
+    <bottom>
+        <HBox spacing="10" alignment="CENTER_RIGHT" styleClass="form-actions">
+            <Button text="Сохранить" onAction="#handleSave" defaultButton="true" styleClass="button-primary"/>
+            <Button text="Отмена" onAction="#handleCancel" cancelButton="true"/>
+        </HBox>
+    </bottom>
+</BorderPane>

@@ -6,7 +6,7 @@ public class ClientDTO {
     private String phone;
     private String email;
 
-    public ClientDTO(){}
+    public ClientDTO() {}
 
     public Long getId() {
         return id;
@@ -42,6 +42,6 @@ public class ClientDTO {
 
     @Override
     public String toString() {
-        return fullName + "(" + phone + ")";
+        return fullName + " (" + phone + ")";
     }
 }
