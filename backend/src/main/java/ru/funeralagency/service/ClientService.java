@@ -12,7 +12,6 @@ import ru.funeralagency.validation.ClientValidationRules;
 
 import java.util.List;
 
-/** Бизнес-логика работы с клиентами. */
 @Service
 public class ClientService {
 

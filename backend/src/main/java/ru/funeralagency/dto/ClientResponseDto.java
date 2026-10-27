@@ -1,6 +1,5 @@
 package ru.funeralagency.dto;
 
-/** Данные клиента, возвращаемые API. */
 public class ClientResponseDto {
 
     private Long id;

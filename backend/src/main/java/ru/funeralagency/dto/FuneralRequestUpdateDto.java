@@ -6,7 +6,6 @@ import ru.funeralagency.model.RequestStatus;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 
-/** Полное новое состояние изменяемой заявки. */
 public class FuneralRequestUpdateDto {
 
     private Long clientId;

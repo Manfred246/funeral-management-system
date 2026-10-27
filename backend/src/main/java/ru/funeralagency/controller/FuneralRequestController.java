@@ -28,7 +28,6 @@ import java.net.URI;
 import java.time.LocalDate;
 import java.util.List;
 
-/** REST API для работы с заявками на ритуальные услуги. */
 @RestController
 @RequestMapping("/api/requests")
 public class FuneralRequestController {

@@ -1,6 +1,5 @@
 package ru.funeralagency.dto;
 
-/** Данные клиента, принимаемые REST API при создании и изменении. */
 public class ClientRequestDto {
 
     private String fullName;

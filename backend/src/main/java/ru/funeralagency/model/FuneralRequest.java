@@ -4,7 +4,6 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 
-/** Заявка клиента на организацию ритуальных услуг. */
 public class FuneralRequest {
 
     private Long id;

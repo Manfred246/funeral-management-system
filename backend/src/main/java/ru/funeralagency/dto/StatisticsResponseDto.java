@@ -2,7 +2,6 @@ package ru.funeralagency.dto;
 
 import java.math.BigDecimal;
 
-/** Сводные показатели системы. */
 public class StatisticsResponseDto {
     private final long totalClients;
     private final long totalRequests;
