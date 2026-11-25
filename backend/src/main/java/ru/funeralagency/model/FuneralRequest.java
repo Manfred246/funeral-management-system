@@ -7,16 +7,22 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
+import jakarta.persistence.JoinTable;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.ManyToMany;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import jakarta.persistence.Version;
 import org.hibernate.annotations.Generated;
+import org.hibernate.annotations.BatchSize;
 import org.hibernate.generator.EventType;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.UUID;
+import java.util.Set;
+import java.util.HashSet;
 
 @Entity
 @Table(name = "funeral_requests")
@@ -77,7 +83,18 @@ public class FuneralRequest {
     @Column(columnDefinition = "text")
     private String comment;
 
+    @ManyToMany(fetch = FetchType.LAZY)
+    @JoinTable(name = "funeral_request_tags",
+            joinColumns = @JoinColumn(name = "funeral_request_id"),
+            inverseJoinColumns = @JoinColumn(name = "tag_id"))
+    @BatchSize(size = 100)
+    private Set<Tag> tags = new HashSet<>();
+
     public FuneralRequest() {
+    }
+
+    public Set<Tag> getTags() {
+        return tags;
     }
 
     public FuneralRequest(

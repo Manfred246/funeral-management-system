@@ -20,6 +20,7 @@ import ru.funeralagency.dto.FuneralRequestResponseDto;
 import ru.funeralagency.dto.FuneralRequestUpdateDto;
 import ru.funeralagency.dto.FuneralRequestFilterDto;
 import ru.funeralagency.dto.FuneralRequestPageDto;
+import ru.funeralagency.dto.TagDto;
 import ru.funeralagency.mapper.FuneralRequestMapper;
 import ru.funeralagency.model.FuneralRequest;
 import ru.funeralagency.model.RequestStatus;
@@ -73,6 +74,7 @@ public class FuneralRequestController {
             @RequestParam(required = false) RequestStatus status,
             @RequestParam(required = false) Boolean urgent,
             @RequestParam(required = false) Integer priority,
+            @RequestParam(required = false) Long tag,
             @RequestParam(defaultValue = "false") boolean archived,
             @RequestParam(required = false) BigDecimal minPrice,
             @RequestParam(required = false) BigDecimal maxPrice,
@@ -87,6 +89,7 @@ public class FuneralRequestController {
         filter.setStatus(status);
         filter.setUrgent(urgent);
         filter.setPriority(priority);
+        filter.setTag(tag);
         filter.setArchived(archived);
         filter.setMinPrice(minPrice);
         filter.setMaxPrice(maxPrice);
@@ -96,6 +99,23 @@ public class FuneralRequestController {
     @GetMapping("/{uuid}")
     public FuneralRequestResponseDto getByUuid(@PathVariable UUID uuid) {
         return requestMapper.toResponseDto(requestService.getByUuid(uuid));
+    }
+
+    @GetMapping("/{uuid}/tags")
+    public List<TagDto> getTags(@PathVariable UUID uuid) {
+        return requestService.getTagsByUuid(uuid);
+    }
+
+    @PostMapping("/{uuid}/tags/{tagId}")
+    public ResponseEntity<Void> addTag(@PathVariable UUID uuid, @PathVariable Long tagId) {
+        requestService.addTagByUuid(uuid, tagId);
+        return ResponseEntity.noContent().build();
+    }
+
+    @DeleteMapping("/{uuid}/tags/{tagId}")
+    public ResponseEntity<Void> removeTag(@PathVariable UUID uuid, @PathVariable Long tagId) {
+        requestService.removeTagByUuid(uuid, tagId);
+        return ResponseEntity.noContent().build();
     }
 
     @PutMapping("/{uuid}")

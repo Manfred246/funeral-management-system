@@ -37,12 +37,13 @@ class FuneralRequestQueryTest {
     @Mock private ClientRepository clients;
     @Mock
     private CeremonyTypeRepository ceremonyTypes;
+    @Mock private TagService tags;
 
     private FuneralRequestService service;
 
     @BeforeEach
     void setUp() {
-        service = new FuneralRequestService(requests, clients, new FuneralRequestMapper(), ceremonyTypes);
+        service = new FuneralRequestService(requests, clients, new FuneralRequestMapper(), ceremonyTypes, tags);
     }
 
     @ParameterizedTest

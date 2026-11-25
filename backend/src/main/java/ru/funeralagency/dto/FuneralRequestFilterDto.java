@@ -14,6 +14,15 @@ public class FuneralRequestFilterDto {
     private boolean archived;
     private BigDecimal minPrice;
     private BigDecimal maxPrice;
+    private Long tag;
+
+    public Long getTag() {
+        return tag;
+    }
+
+    public void setTag(Long tag) {
+        this.tag = tag;
+    }
 
     public String getQ() {
         return q;

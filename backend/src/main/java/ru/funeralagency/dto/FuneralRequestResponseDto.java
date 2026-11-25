@@ -6,6 +6,8 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.UUID;
+import java.util.List;
+import java.util.ArrayList;
 
 public class FuneralRequestResponseDto {
 
@@ -25,6 +27,7 @@ public class FuneralRequestResponseDto {
     private boolean archived;
     private LocalDateTime updatedAt;
     private Long version;
+    private List<TagDto> tags = new ArrayList<>();
 
     public FuneralRequestResponseDto() {
     }
@@ -177,5 +180,13 @@ public class FuneralRequestResponseDto {
 
     public void setVersion(Long version) {
         this.version = version;
+    }
+
+    public List<TagDto> getTags() {
+        return tags;
+    }
+
+    public void setTags(List<TagDto> tags) {
+        this.tags = tags;
     }
 }

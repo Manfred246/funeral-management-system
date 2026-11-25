@@ -55,12 +55,15 @@ class FuneralRequestServiceTest {
 
     @Mock
     private CeremonyTypeRepository ceremonyTypes;
+    @Mock
+    private TagService tags;
 
     private FuneralRequestService service;
 
     @BeforeEach
     void setUp() {
-        service = new FuneralRequestService(requestRepository, clientRepository, new ru.funeralagency.mapper.FuneralRequestMapper(), ceremonyTypes);
+        service = new FuneralRequestService(requestRepository, clientRepository,
+                new ru.funeralagency.mapper.FuneralRequestMapper(), ceremonyTypes, tags);
     }
 
     @Test

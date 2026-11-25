@@ -98,7 +98,7 @@ class ApiIntegrationIT {
         // Схему создаёт Flyway при запуске контекста, до Hibernate validate.
         try (Connection connection = dataSource.getConnection();
              Statement statement = connection.createStatement()) {
-            statement.execute("TRUNCATE funeral_requests, clients, refresh_sessions, user_roles, users RESTART IDENTITY");
+            statement.execute("TRUNCATE funeral_request_tags, tags, funeral_requests, clients, refresh_sessions, user_roles, users RESTART IDENTITY");
             Path seed = Path.of(System.getProperty("project.root"), "database", "seed.sql");
             statement.execute(Files.readString(seed));
             statement.execute("DELETE FROM ceremony_types WHERE id NOT IN (1, 2)");
@@ -138,6 +138,30 @@ class ApiIntegrationIT {
             throw new IllegalStateException("Для PostgreSQL-тестов задайте " + name);
         }
         return value;
+    }
+
+    @Test
+    void tagApiAndFilteredRequestResponsesWorkWithClosedPersistenceContext() throws Exception {
+        String created = mockMvc.perform(post("/api/tags").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"  VIP  \"}"))
+                .andExpect(status().isCreated()).andExpect(jsonPath("$.name").value("VIP"))
+                .andReturn().getResponse().getContentAsString();
+        long tagId = objectMapper.readTree(created).get("id").asLong();
+        var request = context.getBean(FuneralRequestRepository.class).findById(1L).orElseThrow();
+        String path = "/api/requests/" + request.getUuid();
+        mockMvc.perform(post(path + "/tags/" + tagId)).andExpect(status().isNoContent());
+        mockMvc.perform(post(path + "/tags/" + tagId)).andExpect(status().isNoContent());
+        mockMvc.perform(get("/api/tags")).andExpect(status().isOk()).andExpect(jsonPath("$[0].id").value(tagId));
+        mockMvc.perform(get(path)).andExpect(status().isOk()).andExpect(jsonPath("$.tags[0].id").value(tagId));
+        mockMvc.perform(get(path + "/tags")).andExpect(status().isOk()).andExpect(jsonPath("$[0].name").value("VIP"));
+        mockMvc.perform(get("/api/requests").param("tag", Long.toString(tagId)).param("size", "1"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.totalElements").value(1))
+                .andExpect(jsonPath("$.content[0].tags[0].id").value(tagId));
+        mockMvc.perform(delete(path + "/tags/" + tagId)).andExpect(status().isNoContent());
+        mockMvc.perform(delete(path + "/tags/" + tagId)).andExpect(status().isNoContent());
+        mockMvc.perform(get("/api/requests").param("tag", Long.toString(tagId)))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.totalElements").value(0));
+        mockMvc.perform(get("/api/tags/" + tagId)).andExpect(status().isOk());
     }
 
     @Test

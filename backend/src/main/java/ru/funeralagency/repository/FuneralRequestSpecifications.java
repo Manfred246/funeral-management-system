@@ -18,6 +18,10 @@ public final class FuneralRequestSpecifications {
         return (root, query, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
             predicates.add(cb.equal(root.get("archived"), filter.isArchived()));
+            if (filter.getTag() != null) {
+                predicates.add(cb.equal(root.join("tags").get("id"), filter.getTag()));
+                query.distinct(true);
+            }
             if (filter.getQ() != null && !filter.getQ().isBlank()) {
                 String pattern = containsPattern(filter.getQ());
                 predicates.add(cb.or(

@@ -65,7 +65,7 @@ class FlywayBaselineIT {
                 assertEquals("validate", context.getEnvironment().getProperty("spring.jpa.hibernate.ddl-auto"));
                 Flyway flyway = context.getBean(Flyway.class);
                 var applied = flyway.info().applied();
-                assertEquals(4, applied.length);
+                assertEquals(5, applied.length);
                 assertEquals("1", applied[0].getVersion().getVersion());
                 assertEquals("BASELINE", applied[0].getType().name());
                 assertEquals("2", applied[1].getVersion().getVersion());
@@ -74,6 +74,8 @@ class FlywayBaselineIT {
                 assertEquals("SQL", applied[2].getType().name());
                 assertEquals("4", applied[3].getVersion().getVersion());
                 assertEquals("SQL", applied[3].getType().name());
+                assertEquals("5", applied[4].getVersion().getVersion());
+                assertEquals(0, context.getBean(TagRepository.class).count());
                 assertEquals(0, flyway.migrate().migrationsExecuted);
                 assertEquals(6, context.getBean(ClientRepository.class).count());
                 assertEquals(12, context.getBean(FuneralRequestRepository.class).count());

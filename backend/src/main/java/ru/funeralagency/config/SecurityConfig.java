@@ -46,6 +46,12 @@ public class SecurityConfig {
                                 "/api/ceremony-types/*/disable").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.PUT, "/api/ceremony-types/*").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.DELETE, "/api/requests/*/permanent").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.GET, "/api/tags", "/api/tags/*")
+                                .hasAnyRole("VIEWER", "MANAGER", "ADMIN")
+                        .requestMatchers(HttpMethod.POST, "/api/tags", "/api/requests/*/tags/*")
+                                .hasAnyRole("MANAGER", "ADMIN")
+                        .requestMatchers(HttpMethod.DELETE, "/api/requests/*/tags/*")
+                                .hasAnyRole("MANAGER", "ADMIN")
                         .requestMatchers(HttpMethod.GET, "/api/requests", "/api/requests/**", "/api/statistics",
                                 "/api/clients", "/api/clients/**").hasAnyRole("VIEWER", "MANAGER", "ADMIN")
                         .requestMatchers(HttpMethod.POST, "/api/requests", "/api/requests/*/restore", "/api/clients")

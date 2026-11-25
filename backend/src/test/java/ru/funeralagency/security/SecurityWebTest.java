@@ -24,6 +24,9 @@ import org.springframework.web.bind.annotation.RestController;
 import ru.funeralagency.config.SecurityConfig;
 import ru.funeralagency.controller.AuthController;
 import ru.funeralagency.controller.CeremonyTypeController;
+import ru.funeralagency.controller.TagController;
+import ru.funeralagency.model.Tag;
+import ru.funeralagency.service.TagService;
 import ru.funeralagency.dto.AuthTokensDto;
 import ru.funeralagency.dto.AuthUserDto;
 import ru.funeralagency.model.Role;
@@ -47,7 +50,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @WebMvcTest(AuthController.class)
 @ActiveProfiles("test")
 @Import({SecurityConfig.class, JwtService.class, SecurityErrorHandler.class,
-        CeremonyTypeController.class, SecurityWebTest.BusinessController.class})
+        CeremonyTypeController.class, TagController.class, SecurityWebTest.BusinessController.class})
 class SecurityWebTest {
     @Autowired private MockMvc mvc;
     @Autowired private JwtService jwt;
@@ -55,6 +58,7 @@ class SecurityWebTest {
     @MockitoBean private UserRepository users;
     @MockitoBean private AuthService auth;
     @MockitoBean private CeremonyTypeService ceremonyTypes;
+    @MockitoBean private TagService tags;
     private User user;
 
     @BeforeEach
@@ -120,6 +124,37 @@ class SecurityWebTest {
         if (expected == 403) {
             verifyNoInteractions(ceremonyTypes);
         }
+    }
+
+    @ParameterizedTest
+    @CsvSource({"VIEWER,GET,/api/tags,200", "MANAGER,GET,/api/tags,200", "ADMIN,GET,/api/tags,200",
+            "VIEWER,GET,/api/tags/3,200", "MANAGER,GET,/api/tags/3,200", "ADMIN,GET,/api/tags/3,200",
+            "VIEWER,POST,/api/tags,403", "MANAGER,POST,/api/tags,201", "ADMIN,POST,/api/tags,201",
+            "VIEWER,GET,/api/requests/example/tags,200", "MANAGER,GET,/api/requests/example/tags,200",
+            "ADMIN,GET,/api/requests/example/tags,200", "VIEWER,POST,/api/requests/example/tags/3,403",
+            "VIEWER,DELETE,/api/requests/example/tags/3,403", "MANAGER,POST,/api/requests/example/tags/3,200",
+            "MANAGER,DELETE,/api/requests/example/tags/3,200", "ADMIN,POST,/api/requests/example/tags/3,200",
+            "ADMIN,DELETE,/api/requests/example/tags/3,200"})
+    void tagPermissionsUseExistingSecurityChain(Role role, String method, String path, int expected) throws Exception {
+        Tag tag = new Tag(3L, "VIP");
+        when(tags.getAll()).thenReturn(List.of(tag));
+        when(tags.getById(3L)).thenReturn(tag);
+        when(tags.create("VIP")).thenReturn(tag);
+        mvc.perform(request(HttpMethod.valueOf(method), path).header("Authorization", "Bearer " + token(role))
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"name\":\"VIP\"}"))
+                .andExpect(status().is(expected));
+        if (expected == 403) {
+            verifyNoInteractions(tags);
+        }
+    }
+
+    @Test
+    void tagEndpointsRequireAuthentication() throws Exception {
+        mvc.perform(get("/api/tags")).andExpect(status().isUnauthorized());
+        mvc.perform(post("/api/tags").contentType(MediaType.APPLICATION_JSON).content("{\"name\":\"VIP\"}"))
+                .andExpect(status().isUnauthorized());
+        mvc.perform(delete("/api/requests/example/tags/3")).andExpect(status().isUnauthorized());
+        verifyNoInteractions(tags);
     }
 
     @Test
@@ -237,16 +272,16 @@ class SecurityWebTest {
     // Только HTTP-заглушки для проверки URL permissions; бизнес-правила проверяются прежними тестами.
     @RestController
     static class BusinessController {
-        @GetMapping({"/api/requests", "/api/statistics", "/api/clients"})
+        @GetMapping({"/api/requests", "/api/statistics", "/api/clients", "/api/requests/{uuid}/tags"})
         public String read() { return "ok"; }
 
-        @PostMapping({"/api/requests", "/api/requests/{uuid}/restore", "/api/clients"})
+        @PostMapping({"/api/requests", "/api/requests/{uuid}/restore", "/api/clients", "/api/requests/{uuid}/tags/{tagId}"})
         public String create() { return "ok"; }
 
         @PutMapping("/api/requests/{uuid}")
         public String update() { return "ok"; }
 
-        @DeleteMapping({"/api/requests/{uuid}", "/api/requests/{uuid}/permanent"})
+        @DeleteMapping({"/api/requests/{uuid}", "/api/requests/{uuid}/permanent", "/api/requests/{uuid}/tags/{tagId}"})
         public String delete() { return "ok"; }
     }
 }

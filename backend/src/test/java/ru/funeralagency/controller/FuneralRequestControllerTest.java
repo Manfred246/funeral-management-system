@@ -27,6 +27,7 @@ import ru.funeralagency.repository.CeremonyTypeRepository;
 import ru.funeralagency.repository.FuneralRequestRepository;
 import ru.funeralagency.service.ExcelExporter;
 import ru.funeralagency.service.FuneralRequestService;
+import ru.funeralagency.service.TagService;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -62,13 +63,16 @@ class FuneralRequestControllerTest {
 
     @Mock
     private CeremonyTypeRepository ceremonyTypes;
+    @Mock
+    private TagService tagService;
 
     private MockMvc mvc;
     private FuneralRequest stored;
 
     @BeforeEach
     void setUp() {
-        FuneralRequestService service = new FuneralRequestService(requests, clients, new FuneralRequestMapper(), ceremonyTypes);
+        FuneralRequestService service = new FuneralRequestService(
+                requests, clients, new FuneralRequestMapper(), ceremonyTypes, tagService);
         mvc = MockMvcBuilders.standaloneSetup(
                         new FuneralRequestController(service, new FuneralRequestMapper(), exporter))
                 .setControllerAdvice(new ApiExceptionHandler()).build();
@@ -91,7 +95,7 @@ class FuneralRequestControllerTest {
                         .param("q", "FR-2026").param("client", "1")
                         .param("ceremonyTypeId", "1").param("status", "NEW")
                         .param("urgent", "false").param("priority", "0").param("archived", "false")
-                        .param("minPrice", "100").param("maxPrice", "200")
+                        .param("minPrice", "100").param("maxPrice", "200").param("tag", "3")
                         .param("page", "1").param("size", "2").param("sort", "price,asc"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.content[0].uuid").value(UUID_VALUE.toString()))

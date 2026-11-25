@@ -1,5 +1,6 @@
 package ru.funeralagency.service;
 
+import org.hibernate.Hibernate;
 import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -13,6 +14,9 @@ import ru.funeralagency.exception.BusinessException;
 import ru.funeralagency.exception.ValidationException;
 import ru.funeralagency.dto.FuneralRequestFilterDto;
 import ru.funeralagency.dto.FuneralRequestPageDto;
+import ru.funeralagency.dto.TagDto;
+import ru.funeralagency.mapper.TagMapper;
+import ru.funeralagency.model.Tag;
 import ru.funeralagency.mapper.FuneralRequestMapper;
 import ru.funeralagency.model.CeremonyType;
 import ru.funeralagency.model.Client;
@@ -44,17 +48,20 @@ public class FuneralRequestService {
     private final ClientRepository clientRepository;
     private final FuneralRequestMapper requestMapper;
     private final CeremonyTypeRepository ceremonyTypeRepository;
+    private final TagService tagService;
 
     public FuneralRequestService(
             FuneralRequestRepository requestRepository,
             ClientRepository clientRepository,
             FuneralRequestMapper requestMapper,
-            CeremonyTypeRepository ceremonyTypeRepository
+            CeremonyTypeRepository ceremonyTypeRepository,
+            TagService tagService
     ) {
         this.requestRepository = requestRepository;
         this.clientRepository = clientRepository;
         this.requestMapper = requestMapper;
         this.ceremonyTypeRepository = ceremonyTypeRepository;
+        this.tagService = tagService;
     }
 
     @Transactional
@@ -103,6 +110,10 @@ public class FuneralRequestService {
         }
         Pageable pageable = PageRequest.of(page, size, parseSort(sort));
         Page<FuneralRequest> result = requestRepository.findAll(FuneralRequestSpecifications.matching(filter), pageable);
+        // BatchSize загружает коллекции страницы в одной сессии, без collection fetch join с LIMIT/OFFSET.
+        for (FuneralRequest request : result.getContent()) {
+            Hibernate.initialize(request.getTags());
+        }
         return new FuneralRequestPageDto(requestMapper.toResponseDtoList(result.getContent()),
                 result.getNumber(), result.getSize(), result.getTotalElements(), result.getTotalPages());
     }
@@ -166,6 +177,41 @@ public class FuneralRequestService {
             priority += 1;
         }
         return priority;
+    }
+
+    @Transactional(readOnly = true)
+    public List<TagDto> getTagsByUuid(UUID uuid) {
+        return TagMapper.toDtoList(getByUuid(uuid).getTags());
+    }
+
+    @Transactional
+    public void addTagByUuid(UUID uuid, Long tagId) {
+        FuneralRequest request = getByUuid(uuid);
+        if (request.isArchived()) {
+            throw new BusinessException("Нельзя изменять теги архивной заявки");
+        }
+        Tag tag = tagService.getById(tagId);
+        for (Tag existing : request.getTags()) {
+            if (existing.getId().equals(tag.getId())) {
+                return;
+            }
+        }
+        request.getTags().add(tag);
+        request.setUpdatedAt(LocalDateTime.now().truncatedTo(ChronoUnit.MICROS));
+        requestRepository.saveAndFlush(request);
+    }
+
+    @Transactional
+    public void removeTagByUuid(UUID uuid, Long tagId) {
+        FuneralRequest request = getByUuid(uuid);
+        if (request.isArchived()) {
+            throw new BusinessException("Нельзя изменять теги архивной заявки");
+        }
+        Tag tag = tagService.getById(tagId);
+        if (request.getTags().removeIf(existing -> existing.getId().equals(tag.getId()))) {
+            request.setUpdatedAt(LocalDateTime.now().truncatedTo(ChronoUnit.MICROS));
+            requestRepository.saveAndFlush(request);
+        }
     }
 
     @Transactional
@@ -241,6 +287,9 @@ public class FuneralRequestService {
     }
 
     private void validateFilters(FuneralRequestFilterDto filter) {
+        if (filter.getTag() != null && filter.getTag() <= 0) {
+            throw new ValidationException("ID тега должен быть положительным числом");
+        }
         Long typeId = filter.getCeremonyTypeId();
         if (typeId != null && (typeId <= 0 || typeId > Integer.MAX_VALUE)) {
             throw new ValidationException("ID типа церемонии должен быть от 1 до " + Integer.MAX_VALUE);

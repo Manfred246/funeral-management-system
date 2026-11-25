@@ -2,6 +2,11 @@ package ru.funeralagency.repository;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
+import org.springframework.data.jpa.repository.EntityGraph;
+import org.springframework.data.jpa.domain.Specification;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import ru.funeralagency.model.FuneralRequest;
 
 import java.util.List;
@@ -12,7 +17,17 @@ public interface FuneralRequestRepository extends JpaRepository<FuneralRequest, 
         JpaSpecificationExecutor<FuneralRequest> {
     List<FuneralRequest> findAllByOrderByIdAsc();
 
+    @EntityGraph(attributePaths = {"client", "ceremonyType", "tags"})
     Optional<FuneralRequest> findByUuid(UUID uuid);
+
+    // Collection fetch join применяется только к непагинируемым legacy-спискам.
+    @Override
+    @EntityGraph(attributePaths = {"client", "ceremonyType", "tags"})
+    List<FuneralRequest> findAll(Specification<FuneralRequest> spec, Sort sort);
+
+    @Override
+    @EntityGraph(attributePaths = {"client", "ceremonyType"})
+    Page<FuneralRequest> findAll(Specification<FuneralRequest> spec, Pageable pageable);
 
     boolean existsByClientId(long clientId);
 }

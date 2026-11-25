@@ -47,6 +47,7 @@ public class FuneralRequestMapper {
         response.setArchived(request.isArchived());
         response.setUpdatedAt(request.getUpdatedAt());
         response.setVersion(request.getVersion());
+        response.setTags(TagMapper.toDtoList(request.getTags()));
         return response;
     }
 

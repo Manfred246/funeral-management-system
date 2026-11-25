@@ -146,6 +146,22 @@ class FuneralRequestSpecificationsTest {
     }
 
     @Test
+    void tagUsesDatabaseJoinAndDistinctCombinedWithStatusAndArchived() {
+        FuneralRequestFilterDto filter = new FuneralRequestFilterDto();
+        filter.setTag(3L);
+        filter.setStatus(RequestStatus.NEW);
+        filter.setArchived(true);
+        FuneralRequestSpecifications.matching(filter).toPredicate(root, query, cb);
+        verify(cb).equal(root.join("tags").get("id"), 3L);
+        verify(query).distinct(true);
+        verify(cb).equal(root.get("status"), RequestStatus.NEW);
+        verify(cb).equal(root.get("archived"), true);
+        ArgumentCaptor<Predicate[]> predicates = ArgumentCaptor.forClass(Predicate[].class);
+        verify(cb).and(predicates.capture());
+        assertEquals(3, predicates.getValue().length);
+    }
+
+    @Test
     void legacyDateFilterUsesInclusiveBoundaries() {
         LocalDate from = LocalDate.of(2026, 1, 1);
         LocalDate to = from.plusDays(7);

@@ -22,6 +22,10 @@ import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import ru.funeralagency.Main;
 import ru.funeralagency.service.FuneralRequestService;
 import ru.funeralagency.service.AuthService;
+import ru.funeralagency.service.TagService;
+import ru.funeralagency.model.Tag;
+import ru.funeralagency.exception.BusinessException;
+import org.hibernate.SessionFactory;
 import ru.funeralagency.model.Role;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -101,7 +105,7 @@ class JpaRepositoriesIT {
     @BeforeEach
     void resetDemoData() throws Exception {
         try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
-            statement.execute("TRUNCATE funeral_requests, clients, refresh_sessions, user_roles, users RESTART IDENTITY");
+            statement.execute("TRUNCATE funeral_request_tags, tags, funeral_requests, clients, refresh_sessions, user_roles, users RESTART IDENTITY");
             statement.execute("DELETE FROM ceremony_types WHERE id NOT IN (1, 2)");
             statement.execute("UPDATE ceremony_types SET enabled = true, name = CASE id WHEN 1 THEN 'Захоронение' ELSE 'Кремация' END");
             statement.execute("ALTER TABLE ceremony_types ALTER COLUMN id RESTART WITH 3");
@@ -122,9 +126,9 @@ class JpaRepositoriesIT {
     }
 
     @Test
-    void flywayCreatesV1V2V3V4AndDoesNotRepeatThem() {
+    void flywayCreatesV1ThroughV5AndDoesNotRepeatThem() {
         Flyway flyway = context.getBean(Flyway.class);
-        assertEquals("4", flyway.info().current().getVersion().getVersion());
+        assertEquals("5", flyway.info().current().getVersion().getVersion());
         assertEquals("SQL", flyway.info().current().getType().name());
         assertEquals(0, flyway.migrate().migrationsExecuted);
         assertEquals(6, clients.count());
@@ -482,6 +486,136 @@ class JpaRepositoriesIT {
         archived.setPrice(new BigDecimal("300.00"));
         archived.setArchived(true);
         return requests.saveAllAndFlush(List.of(first, second, archived));
+    }
+
+    @Test
+    void tagsChangeVersionOnlyOnActualMutationAndPermanentDeleteKeepsTag() throws Exception {
+        TagService tagService = context.getBean(TagService.class);
+        Tag tag = tagService.create("  VIP  ");
+        assertEquals("VIP", tag.getName());
+        assertThrows(BusinessException.class, () -> tagService.create("vip"));
+        FuneralRequest saved = requests.saveAndFlush(newRequest());
+        UUID uuid = saved.getUuid();
+        Long version = saved.getVersion();
+        String code = saved.getRequestCode();
+        LocalDateTime createdAt = saved.getCreatedAt();
+
+        requestService.addTagByUuid(uuid, tag.getId());
+        FuneralRequest added = requests.findByUuid(uuid).orElseThrow();
+        assertEquals(version + 1, added.getVersion());
+        assertEquals(1, added.getTags().size());
+        assertEquals(uuid, added.getUuid());
+        assertEquals(code, added.getRequestCode());
+        assertEquals(createdAt, added.getCreatedAt());
+        requestService.addTagByUuid(uuid, tag.getId());
+        FuneralRequest repeated = requests.findByUuid(uuid).orElseThrow();
+        assertEquals(added.getVersion(), repeated.getVersion());
+        assertEquals(added.getUpdatedAt(), repeated.getUpdatedAt());
+
+        requestService.removeTagByUuid(uuid, tag.getId());
+        FuneralRequest removed = requests.findByUuid(uuid).orElseThrow();
+        assertEquals(version + 2, removed.getVersion());
+        assertTrue(removed.getTags().isEmpty());
+        assertNotNull(tagService.getById(tag.getId()));
+        requestService.removeTagByUuid(uuid, tag.getId());
+        FuneralRequest removedAgain = requests.findByUuid(uuid).orElseThrow();
+        assertEquals(removed.getVersion(), removedAgain.getVersion());
+        assertEquals(removed.getUpdatedAt(), removedAgain.getUpdatedAt());
+
+        requestService.addTagByUuid(uuid, tag.getId());
+        requestService.archiveByUuid(uuid);
+        assertEquals(tag.getId(), requestService.getTagsByUuid(uuid).get(0).id());
+        assertThrows(BusinessException.class, () -> requestService.addTagByUuid(uuid, tag.getId()));
+        assertThrows(BusinessException.class, () -> requestService.removeTagByUuid(uuid, tag.getId()));
+        requestService.deletePermanentlyByUuid(uuid);
+        assertTrue(requests.findByUuid(uuid).isEmpty());
+        assertEquals(1, context.getBean(TagRepository.class).count());
+        try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement();
+             ResultSet result = statement.executeQuery("SELECT count(*) FROM funeral_request_tags")) {
+            assertTrue(result.next());
+            assertEquals(0, result.getInt(1));
+        }
+    }
+
+    @Test
+    void tagFilterCombinesStatusArchiveAndPaginationWithoutDuplicates() throws Exception {
+        List<FuneralRequest> records = queryFixtures();
+        Tag tag = context.getBean(TagService.class).create("VIP");
+        Tag other = context.getBean(TagService.class).create("Транспорт");
+        for (int index = 0; index < 2; index++) {
+            requestService.addTagByUuid(records.get(index).getUuid(), tag.getId());
+        }
+        requestService.addTagByUuid(records.get(0).getUuid(), other.getId());
+        // Архивирование выполняется уже после назначения тега.
+        requestService.restoreByUuid(records.get(2).getUuid());
+        requestService.addTagByUuid(records.get(2).getUuid(), tag.getId());
+        requestService.archiveByUuid(records.get(2).getUuid());
+        FuneralRequestFilterDto filter = new FuneralRequestFilterDto();
+        filter.setTag(tag.getId());
+        var first = requestService.findPage(filter, 0, 1, "price,asc");
+        var second = requestService.findPage(filter, 1, 1, "price,asc");
+        assertEquals(2, first.totalElements());
+        assertEquals(2, first.totalPages());
+        assertEquals(records.get(0).getUuid(), first.content().get(0).getUuid());
+        assertEquals(2, first.content().get(0).getTags().size());
+        assertEquals(records.get(1).getUuid(), second.content().get(0).getUuid());
+        assertTrue(requestService.findPage(filter, 2, 1, "price,asc").content().isEmpty());
+        filter.setStatus(RequestStatus.CONFIRMED);
+        assertEquals(records.get(1).getUuid(), requestService.findPage(filter, 0, 20, "price,asc")
+                .content().get(0).getUuid());
+        assertEquals(1, requestService.findPage(filter, 0, 20, "price,asc").totalElements());
+        filter.setStatus(null);
+        filter.setArchived(true);
+        assertEquals(1, requestService.findPage(filter, 0, 20, "price,asc").totalElements());
+        assertEquals(records.get(2).getUuid(), requestService.findPage(filter, 0, 20, "price,asc")
+                .content().get(0).getUuid());
+        filter.setTag(Long.MAX_VALUE);
+        assertEquals(0, requestService.findPage(filter, 0, 20, "price,asc").totalElements());
+    }
+
+    @Test
+    void pageLoadsTagsInOneBatchWithoutCollectionFetchPagination() {
+        Tag tag = context.getBean(TagService.class).create("VIP");
+        List<FuneralRequest> records = requests.findAllByOrderByIdAsc();
+        for (FuneralRequest request : records) {
+            requestService.addTagByUuid(request.getUuid(), tag.getId());
+        }
+        var statistics = context.getBean(EntityManagerFactory.class).unwrap(SessionFactory.class).getStatistics();
+        boolean enabledBefore = statistics.isStatisticsEnabled();
+        statistics.setStatisticsEnabled(true);
+        statistics.clear();
+        try {
+            var page = requestService.findPage(new FuneralRequestFilterDto(), 0, 5, "createdAt,asc");
+            assertEquals(5, page.content().size());
+            assertEquals(12, page.totalElements());
+            assertTrue(page.content().stream().allMatch(dto -> dto.getTags().size() == 1));
+            // SELECT страницы с to-one связями, COUNT и один SELECT коллекций тегов.
+            assertEquals(3, statistics.getPrepareStatementCount());
+        } finally {
+            statistics.setStatisticsEnabled(enabledBefore);
+        }
+    }
+
+    @Test
+    void tagSchemaEnforcesUniqueNamesForeignKeysAndUniquePairs() throws Exception {
+        Tag tag = context.getBean(TagService.class).create("VIP");
+        try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
+            assertEquals("23505", assertThrows(java.sql.SQLException.class,
+                    () -> statement.execute("INSERT INTO tags(name) VALUES ('vip')")).getSQLState());
+            assertEquals("23502", assertThrows(java.sql.SQLException.class,
+                    () -> statement.execute("INSERT INTO tags(name) VALUES (NULL)")).getSQLState());
+            assertEquals("23514", assertThrows(java.sql.SQLException.class,
+                    () -> statement.execute("INSERT INTO tags(name) VALUES ('  ')")).getSQLState());
+            statement.execute("INSERT INTO funeral_request_tags VALUES (1, " + tag.getId() + ")");
+            assertEquals("23505", assertThrows(java.sql.SQLException.class,
+                    () -> statement.execute("INSERT INTO funeral_request_tags VALUES (1, " + tag.getId() + ")")).getSQLState());
+            assertEquals("23503", assertThrows(java.sql.SQLException.class,
+                    () -> statement.execute("INSERT INTO funeral_request_tags VALUES (1, 999999)")).getSQLState());
+            assertEquals("23503", assertThrows(java.sql.SQLException.class,
+                    () -> statement.execute("INSERT INTO funeral_request_tags VALUES (999999, " + tag.getId() + ")")).getSQLState());
+            assertEquals("23503", assertThrows(java.sql.SQLException.class,
+                    () -> statement.execute("DELETE FROM tags WHERE id = " + tag.getId())).getSQLState());
+        }
     }
 
     @Test
