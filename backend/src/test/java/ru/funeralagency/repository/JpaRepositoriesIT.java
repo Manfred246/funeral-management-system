@@ -6,6 +6,8 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInstance;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.WebApplicationType;
 import org.springframework.context.ConfigurableApplicationContext;
@@ -24,9 +26,12 @@ import java.math.BigDecimal;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.sql.Connection;
+import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.Statement;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -101,9 +106,9 @@ class JpaRepositoriesIT {
     }
 
     @Test
-    void flywayCreatesV1AndDoesNotRepeatIt() {
+    void flywayCreatesV1AndV2AndDoesNotRepeatThem() {
         Flyway flyway = context.getBean(Flyway.class);
-        assertEquals("1", flyway.info().current().getVersion().getVersion());
+        assertEquals("2", flyway.info().current().getVersion().getVersion());
         assertEquals("SQL", flyway.info().current().getType().name());
         assertEquals(0, flyway.migrate().migrationsExecuted);
         assertEquals(6, clients.count());
@@ -127,6 +132,32 @@ class JpaRepositoriesIT {
                 }
             } finally {
                 connection.rollback();
+            }
+        }
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+            "2026, 1, FR-2026-000001",
+            "2026, 15, FR-2026-000015",
+            "2026, 123456, FR-2026-123456",
+            "2030, 1000000, FR-2030-1000000"
+    })
+    void databaseGeneratesReadableCodeFromIdAndCreationYear(int year, long id, String expected) throws Exception {
+        try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
+            statement.execute("DELETE FROM funeral_requests");
+            try (PreparedStatement insert = connection.prepareStatement("""
+                    INSERT INTO funeral_requests
+                        (id, client_id, deceased_full_name, ceremony_date, ceremony_type_id, status_id, price, created_at)
+                    VALUES (?, 1, 'Тест', DATE '2031-01-01', 1, 1, 100, ?)
+                    RETURNING request_code
+                    """)) {
+                insert.setLong(1, id);
+                insert.setObject(2, LocalDateTime.of(year, 1, 1, 12, 0));
+                try (ResultSet result = insert.executeQuery()) {
+                    assertTrue(result.next());
+                    assertEquals(expected, result.getString(1));
+                }
             }
         }
     }
@@ -163,10 +194,16 @@ class JpaRepositoriesIT {
         assertNotNull(saved.getId());
         assertNotNull(saved.getCreatedAt());
         var createdAt = saved.getCreatedAt();
+        UUID uuid = saved.getUuid();
+        String requestCode = saved.getRequestCode();
+        assertEquals(String.format(java.util.Locale.ROOT, "FR-%d-%06d",
+                createdAt.getYear(), saved.getId()), requestCode);
+        assertEquals(0L, saved.getVersion());
         saved.setPrice(new BigDecimal("98765.43"));
         saved.setStatus(RequestStatus.CONFIRMED);
         saved.setCeremonyType(CeremonyType.CREMATION);
         saved.setComment("Изменено");
+        saved.setUpdatedAt(createdAt.plusHours(1));
         requests.saveAndFlush(saved);
         FuneralRequest read = requests.findById(saved.getId()).orElseThrow();
         assertEquals(1L, read.getClient().getId());
@@ -175,6 +212,10 @@ class JpaRepositoriesIT {
         assertEquals(saved.getPrice(), read.getPrice());
         assertEquals(CeremonyType.CREMATION, read.getCeremonyType());
         assertEquals(RequestStatus.CONFIRMED, read.getStatus());
+        assertEquals(uuid, read.getUuid());
+        assertEquals(requestCode, read.getRequestCode());
+        assertEquals(createdAt.plusHours(1), read.getUpdatedAt());
+        assertEquals(1L, read.getVersion());
         requests.deleteById(saved.getId());
         assertTrue(requests.findById(saved.getId()).isEmpty());
     }
@@ -241,9 +282,14 @@ class JpaRepositoriesIT {
     }
 
     private FuneralRequest newRequest() {
-        return new FuneralRequest(null, clients.findById(1L).orElseThrow(), "Тестовый умерший",
+        FuneralRequest request = new FuneralRequest(null, clients.findById(1L).orElseThrow(), "Тестовый умерший",
                 LocalDate.now().plusDays(5), CeremonyType.BURIAL, RequestStatus.NEW,
-                new BigDecimal("12345.67"), null, null);
+                new BigDecimal("12345.67"), LocalDateTime.now().truncatedTo(ChronoUnit.MICROS), null);
+        UUID uuid = UUID.randomUUID();
+        request.setUuid(uuid);
+        request.setPriority(1);
+        request.setUpdatedAt(request.getCreatedAt());
+        return request;
     }
 
     private String requiredEnvironment(String name) {

@@ -42,6 +42,12 @@ class FlywayBaselineIT {
                 for (String filename : new String[]{"schema.sql", "seed.sql"}) {
                     statement.execute(Files.readString(Path.of(System.getProperty("project.root"), "database", filename)));
                 }
+                // Историческая заявка проверяет, что V2 считает priority от created_at, а не CURRENT_DATE.
+                statement.execute("""
+                        UPDATE funeral_requests
+                        SET created_at = TIMESTAMP '2000-01-01 12:00:00', ceremony_date = DATE '2000-01-04'
+                        WHERE id = 1
+                        """);
                 before = snapshot(statement);
             }
             SpringApplication application = new SpringApplication(Main.class);
@@ -56,13 +62,40 @@ class FlywayBaselineIT {
             try (ConfigurableApplicationContext context = application.run()) {
                 assertEquals("validate", context.getEnvironment().getProperty("spring.jpa.hibernate.ddl-auto"));
                 Flyway flyway = context.getBean(Flyway.class);
-                assertEquals("1", flyway.info().current().getVersion().getVersion());
-                assertEquals("BASELINE", flyway.info().current().getType().name());
+                var applied = flyway.info().applied();
+                assertEquals(2, applied.length);
+                assertEquals("1", applied[0].getVersion().getVersion());
+                assertEquals("BASELINE", applied[0].getType().name());
+                assertEquals("2", applied[1].getVersion().getVersion());
+                assertEquals("SQL", applied[1].getType().name());
                 assertEquals(0, flyway.migrate().migrationsExecuted);
                 assertEquals(6, context.getBean(ClientRepository.class).count());
                 assertEquals(12, context.getBean(FuneralRequestRepository.class).count());
                 try (Connection connection = source.getConnection(); Statement statement = connection.createStatement()) {
                     assertEquals(before, snapshot(statement));
+                    try (ResultSet result = statement.executeQuery("""
+                            SELECT id, uuid, request_code, urgent, archived, priority,
+                                   created_at, updated_at, version
+                            FROM funeral_requests ORDER BY id
+                            """)) {
+                        int rows = 0;
+                        while (result.next()) {
+                            rows++;
+                            assertNotNull(result.getObject("uuid", UUID.class));
+                            var createdAt = result.getTimestamp("created_at").toLocalDateTime();
+                            assertEquals(String.format(java.util.Locale.ROOT, "FR-%d-%06d",
+                                    createdAt.getYear(), result.getLong("id")), result.getString("request_code"));
+                            assertFalse(result.getBoolean("urgent"));
+                            assertFalse(result.getBoolean("archived"));
+                            assertTrue(result.getInt("priority") >= 0 && result.getInt("priority") <= 2);
+                            if (result.getLong("id") == 1L) {
+                                assertEquals(2, result.getInt("priority"));
+                            }
+                            assertEquals(createdAt, result.getTimestamp("updated_at").toLocalDateTime());
+                            assertEquals(0L, result.getLong("version"));
+                        }
+                        assertEquals(12, rows);
+                    }
                 }
             }
         } finally {
@@ -77,7 +110,14 @@ class FlywayBaselineIT {
     private String snapshot(Statement statement) throws Exception {
         StringBuilder snapshot = new StringBuilder();
         for (String table : new String[]{"clients", "funeral_requests", "ceremony_types", "request_statuses"}) {
-            try (ResultSet result = statement.executeQuery("SELECT row_to_json(t)::text FROM " + table + " t ORDER BY id")) {
+            String columns = switch (table) {
+                case "clients" -> "id, full_name, phone, email, created_at";
+                case "funeral_requests" -> "id, client_id, deceased_full_name, ceremony_date, "
+                        + "ceremony_type_id, status_id, price, comment, created_at";
+                default -> "id, name";
+            };
+            try (ResultSet result = statement.executeQuery("SELECT row_to_json(t)::text FROM (SELECT "
+                    + columns + " FROM " + table + " ORDER BY id) t")) {
                 while (result.next()) {
                     snapshot.append(table).append(':').append(result.getString(1)).append('\n');
                 }

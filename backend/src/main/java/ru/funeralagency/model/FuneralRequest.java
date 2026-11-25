@@ -9,12 +9,14 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
+import jakarta.persistence.Version;
 import org.hibernate.annotations.Generated;
 import org.hibernate.generator.EventType;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.UUID;
 
 @Entity
 @Table(name = "funeral_requests")
@@ -23,6 +25,14 @@ public class FuneralRequest {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
+
+    @Column(nullable = false, unique = true, updatable = false)
+    private UUID uuid;
+
+    // PostgreSQL вычисляет код из identity ID и created_at в том же INSERT.
+    @Generated(event = EventType.INSERT)
+    @Column(name = "request_code", nullable = false, unique = true, insertable = false, updatable = false, length = 64)
+    private String requestCode;
 
     @ManyToOne(optional = false)
     @JoinColumn(name = "client_id", nullable = false)
@@ -45,10 +55,24 @@ public class FuneralRequest {
     @Column(nullable = false, precision = 12, scale = 2)
     private BigDecimal price;
 
-    // Значение по-прежнему назначает PostgreSQL; Hibernate читает его после INSERT.
-    @Generated(event = EventType.INSERT)
-    @Column(name = "created_at", nullable = false, insertable = false, updatable = false)
+    @Column(nullable = false)
+    private boolean urgent;
+
+    @Column(nullable = false)
+    private Integer priority;
+
+    @Column(nullable = false)
+    private boolean archived;
+
+    @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
+
+    @Column(name = "updated_at", nullable = false)
+    private LocalDateTime updatedAt;
+
+    @Version
+    @Column(nullable = false)
+    private Long version;
 
     @Column(columnDefinition = "text")
     private String comment;
@@ -84,6 +108,62 @@ public class FuneralRequest {
 
     public void setId(Long id) {
         this.id = id;
+    }
+
+    public UUID getUuid() {
+        return uuid;
+    }
+
+    public void setUuid(UUID uuid) {
+        this.uuid = uuid;
+    }
+
+    public String getRequestCode() {
+        return requestCode;
+    }
+
+    public void setRequestCode(String requestCode) {
+        this.requestCode = requestCode;
+    }
+
+    public boolean isUrgent() {
+        return urgent;
+    }
+
+    public void setUrgent(boolean urgent) {
+        this.urgent = urgent;
+    }
+
+    public Integer getPriority() {
+        return priority;
+    }
+
+    public void setPriority(Integer priority) {
+        this.priority = priority;
+    }
+
+    public boolean isArchived() {
+        return archived;
+    }
+
+    public void setArchived(boolean archived) {
+        this.archived = archived;
+    }
+
+    public LocalDateTime getUpdatedAt() {
+        return updatedAt;
+    }
+
+    public void setUpdatedAt(LocalDateTime updatedAt) {
+        this.updatedAt = updatedAt;
+    }
+
+    public Long getVersion() {
+        return version;
+    }
+
+    public void setVersion(Long version) {
+        this.version = version;
     }
 
     public Client getClient() {

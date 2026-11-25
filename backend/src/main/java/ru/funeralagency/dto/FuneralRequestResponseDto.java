@@ -6,6 +6,7 @@ import ru.funeralagency.model.RequestStatus;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.UUID;
 
 public class FuneralRequestResponseDto {
 
@@ -18,6 +19,13 @@ public class FuneralRequestResponseDto {
     private BigDecimal price;
     private LocalDateTime createdAt;
     private String comment;
+    private UUID uuid;
+    private String requestCode;
+    private boolean urgent;
+    private Integer priority;
+    private boolean archived;
+    private LocalDateTime updatedAt;
+    private Long version;
 
     public FuneralRequestResponseDto() {
     }
@@ -114,5 +122,61 @@ public class FuneralRequestResponseDto {
 
     public void setComment(String comment) {
         this.comment = comment;
+    }
+
+    public UUID getUuid() {
+        return uuid;
+    }
+
+    public void setUuid(UUID uuid) {
+        this.uuid = uuid;
+    }
+
+    public String getRequestCode() {
+        return requestCode;
+    }
+
+    public void setRequestCode(String requestCode) {
+        this.requestCode = requestCode;
+    }
+
+    public boolean isUrgent() {
+        return urgent;
+    }
+
+    public void setUrgent(boolean urgent) {
+        this.urgent = urgent;
+    }
+
+    public Integer getPriority() {
+        return priority;
+    }
+
+    public void setPriority(Integer priority) {
+        this.priority = priority;
+    }
+
+    public boolean isArchived() {
+        return archived;
+    }
+
+    public void setArchived(boolean archived) {
+        this.archived = archived;
+    }
+
+    public LocalDateTime getUpdatedAt() {
+        return updatedAt;
+    }
+
+    public void setUpdatedAt(LocalDateTime updatedAt) {
+        this.updatedAt = updatedAt;
+    }
+
+    public Long getVersion() {
+        return version;
+    }
+
+    public void setVersion(Long version) {
+        this.version = version;
     }
 }

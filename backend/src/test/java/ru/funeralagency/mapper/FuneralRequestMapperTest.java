@@ -10,6 +10,7 @@ import ru.funeralagency.model.RequestStatus;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -28,6 +29,7 @@ class FuneralRequestMapperTest {
                 new BigDecimal("12000.00"),
                 "  "
         );
+        dto.setUrgent(true);
 
         FuneralRequest request = mapper.toEntity(dto);
 
@@ -36,6 +38,12 @@ class FuneralRequestMapperTest {
         assertNull(request.getId());
         assertNull(request.getStatus());
         assertNull(request.getCreatedAt());
+        org.junit.jupiter.api.Assertions.assertTrue(request.isUrgent());
+        assertNull(request.getUuid());
+        assertNull(request.getRequestCode());
+        assertNull(request.getPriority());
+        assertNull(request.getUpdatedAt());
+        assertNull(request.getVersion());
         assertEquals(dto.getComment(), request.getComment());
     }
 
@@ -53,6 +61,14 @@ class FuneralRequestMapperTest {
                 createdAt,
                 null
         );
+        UUID uuid = UUID.randomUUID();
+        request.setUuid(uuid);
+        request.setRequestCode("FR-2026-000008");
+        request.setUrgent(true);
+        request.setPriority(2);
+        request.setArchived(true);
+        request.setUpdatedAt(createdAt.plusDays(1));
+        request.setVersion(3L);
 
         var response = mapper.toResponseDto(request);
 
@@ -60,5 +76,12 @@ class FuneralRequestMapperTest {
         assertEquals(4L, response.getClientId());
         assertEquals(RequestStatus.NEW, response.getStatus());
         assertEquals(createdAt, response.getCreatedAt());
+        assertEquals(uuid, response.getUuid());
+        assertEquals("FR-2026-000008", response.getRequestCode());
+        org.junit.jupiter.api.Assertions.assertTrue(response.isUrgent());
+        org.junit.jupiter.api.Assertions.assertTrue(response.isArchived());
+        assertEquals(2, response.getPriority());
+        assertEquals(createdAt.plusDays(1), response.getUpdatedAt());
+        assertEquals(3L, response.getVersion());
     }
 }

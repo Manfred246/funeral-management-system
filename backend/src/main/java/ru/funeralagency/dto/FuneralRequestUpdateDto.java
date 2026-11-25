@@ -15,6 +15,7 @@ public class FuneralRequestUpdateDto {
     private RequestStatus status;
     private BigDecimal price;
     private String comment;
+    private Boolean urgent;
 
     public FuneralRequestUpdateDto() {
     }
@@ -91,5 +92,13 @@ public class FuneralRequestUpdateDto {
 
     public void setComment(String comment) {
         this.comment = comment;
+    }
+
+    public Boolean getUrgent() {
+        return urgent;
+    }
+
+    public void setUrgent(Boolean urgent) {
+        this.urgent = urgent;
     }
 }

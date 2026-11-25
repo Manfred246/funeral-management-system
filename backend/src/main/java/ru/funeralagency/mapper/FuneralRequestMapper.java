@@ -18,6 +18,7 @@ public class FuneralRequestMapper {
         request.setCeremonyType(dto.getCeremonyType());
         request.setPrice(dto.getPrice());
         request.setComment(dto.getComment());
+        request.setUrgent(dto.isUrgent());
         return request;
     }
 
@@ -29,15 +30,26 @@ public class FuneralRequestMapper {
         request.setStatus(dto.getStatus());
         request.setPrice(dto.getPrice());
         request.setComment(dto.getComment());
+        if (dto.getUrgent() != null) {
+            request.setUrgent(dto.getUrgent());
+        }
         return request;
     }
 
     public FuneralRequestResponseDto toResponseDto(FuneralRequest request) {
-        return new FuneralRequestResponseDto(
+        FuneralRequestResponseDto response = new FuneralRequestResponseDto(
                 request.getId(), request.getClient().getId(), request.getDeceasedFullName(),
                 request.getCeremonyDate(), request.getCeremonyType(), request.getStatus(),
                 request.getPrice(), request.getCreatedAt(), request.getComment()
         );
+        response.setUuid(request.getUuid());
+        response.setRequestCode(request.getRequestCode());
+        response.setUrgent(request.isUrgent());
+        response.setPriority(request.getPriority());
+        response.setArchived(request.isArchived());
+        response.setUpdatedAt(request.getUpdatedAt());
+        response.setVersion(request.getVersion());
+        return response;
     }
 
     public List<FuneralRequestResponseDto> toResponseDtoList(List<FuneralRequest> requests) {

@@ -14,7 +14,10 @@ import ru.funeralagency.repository.FuneralRequestRepository;
 import ru.funeralagency.validation.FuneralRequestValidationRules;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
+import java.util.UUID;
 
 @Service
 public class FuneralRequestService {
@@ -37,10 +40,18 @@ public class FuneralRequestService {
         }
         request.setId(null);
         request.setStatus(RequestStatus.NEW);
-        request.setCreatedAt(null);
         request.setClient(findClient(clientId));
         normalizeAndValidate(request);
         request.setPrice(request.getPrice().setScale(2));
+        // PostgreSQL TIMESTAMP хранит микросекунды; ответ совпадает с последующим чтением БД.
+        LocalDateTime now = LocalDateTime.now().truncatedTo(ChronoUnit.MICROS);
+        request.setCreatedAt(now);
+        request.setUpdatedAt(now);
+        request.setUuid(UUID.randomUUID());
+        request.setRequestCode(null);
+        request.setPriority(calculatePriority(request.isUrgent(), now, request.getCeremonyDate()));
+        request.setArchived(false);
+        request.setVersion(null);
         return requestRepository.saveAndFlush(request);
     }
 
@@ -57,7 +68,7 @@ public class FuneralRequestService {
     }
 
     @Transactional
-    public FuneralRequest update(Long id, FuneralRequest request, Long clientId) {
+    public FuneralRequest update(Long id, FuneralRequest request, Long clientId, Boolean urgent) {
         validateId(id);
         if (request == null) {
             throw new ValidationException("Заявка не может быть null");
@@ -75,7 +86,25 @@ public class FuneralRequestService {
         existing.setStatus(request.getStatus());
         existing.setPrice(request.getPrice().setScale(2));
         existing.setComment(request.getComment());
+        // Старые клиенты не знают urgent; отсутствие поля не должно сбрасывать срочность.
+        if (urgent != null) {
+            existing.setUrgent(urgent);
+        }
+        LocalDateTime now = LocalDateTime.now().truncatedTo(ChronoUnit.MICROS);
+        existing.setPriority(calculatePriority(existing.isUrgent(), existing.getCreatedAt(), existing.getCeremonyDate()));
+        existing.setUpdatedAt(now);
         return requestRepository.saveAndFlush(existing);
+    }
+
+    static int calculatePriority(boolean urgent, LocalDateTime createdAt, LocalDate ceremonyDate) {
+        int priority = urgent ? 2 : 0;
+        long days = ChronoUnit.DAYS.between(createdAt.toLocalDate(), ceremonyDate);
+        if (days >= 0 && days <= 3) {
+            priority += 2;
+        } else if (days >= 4 && days <= 7) {
+            priority += 1;
+        }
+        return priority;
     }
 
     @Transactional

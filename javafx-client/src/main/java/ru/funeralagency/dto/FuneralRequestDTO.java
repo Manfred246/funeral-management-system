@@ -1,9 +1,12 @@
 package ru.funeralagency.dto;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 
+@JsonIgnoreProperties(ignoreUnknown = true)
 public class FuneralRequestDTO {
     private Long id;
     private Long clientId;

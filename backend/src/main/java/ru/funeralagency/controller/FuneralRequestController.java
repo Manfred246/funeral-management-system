@@ -75,7 +75,7 @@ public class FuneralRequestController {
             @PathVariable Long id,
             @RequestBody FuneralRequestUpdateDto dto
     ) {
-        FuneralRequest updated = requestService.update(id, requestMapper.toEntity(dto), dto.getClientId());
+        FuneralRequest updated = requestService.update(id, requestMapper.toEntity(dto), dto.getClientId(), dto.getUrgent());
         return requestMapper.toResponseDto(updated);
     }
 

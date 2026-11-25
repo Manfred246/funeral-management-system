@@ -13,6 +13,7 @@ public class FuneralRequestCreateDto {
     private CeremonyType ceremonyType;
     private BigDecimal price;
     private String comment;
+    private boolean urgent;
 
     public FuneralRequestCreateDto() {
     }
@@ -79,5 +80,13 @@ public class FuneralRequestCreateDto {
 
     public void setComment(String comment) {
         this.comment = comment;
+    }
+
+    public boolean isUrgent() {
+        return urgent;
+    }
+
+    public void setUrgent(boolean urgent) {
+        this.urgent = urgent;
     }
 }
