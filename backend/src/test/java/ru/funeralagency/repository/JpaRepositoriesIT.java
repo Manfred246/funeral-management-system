@@ -27,6 +27,9 @@ import ru.funeralagency.service.RequestNoteService;
 import ru.funeralagency.service.FuneralRequestBulkService;
 import ru.funeralagency.dto.BulkOperation;
 import ru.funeralagency.dto.FuneralRequestBulkDto;
+import ru.funeralagency.dto.CsvImportMode;
+import ru.funeralagency.service.FuneralRequestCsv;
+import ru.funeralagency.service.FuneralRequestCsvService;
 import ru.funeralagency.model.User;
 import ru.funeralagency.exception.EntityNotFoundException;
 import ru.funeralagency.model.Tag;
@@ -132,9 +135,9 @@ class JpaRepositoriesIT {
     }
 
     @Test
-    void flywayCreatesV1ThroughV6AndDoesNotRepeatThem() {
+    void flywayCreatesV1ThroughV7AndDoesNotRepeatThem() {
         Flyway flyway = context.getBean(Flyway.class);
-        assertEquals("6", flyway.info().current().getVersion().getVersion());
+        assertEquals("7", flyway.info().current().getVersion().getVersion());
         assertEquals("SQL", flyway.info().current().getType().name());
         assertEquals(0, flyway.migrate().migrationsExecuted);
         assertEquals(6, clients.count());
@@ -492,6 +495,161 @@ class JpaRepositoriesIT {
         archived.setPrice(new BigDecimal("300.00"));
         archived.setArchived(true);
         return requests.saveAllAndFlush(List.of(first, second, archived));
+    }
+
+    @Test
+    void csvExportMatchesCombinedMainListFiltersInDatabase() throws Exception {
+        List<FuneralRequest> records = queryFixtures();
+        Tag tag = context.getBean(TagService.class).create("CSV");
+        requestService.addTagByUuid(records.get(0).getUuid(), tag.getId());
+        FuneralRequestFilterDto filter = new FuneralRequestFilterDto();
+        filter.setQ("50%_!");
+        filter.setClient(1L);
+        filter.setCeremonyTypeId(1L);
+        filter.setStatus(RequestStatus.NEW);
+        filter.setUrgent(true);
+        filter.setPriority(4);
+        filter.setTag(tag.getId());
+        filter.setMinPrice(new BigDecimal("100.00"));
+        filter.setMaxPrice(new BigDecimal("100.00"));
+        var page = requestService.findPage(filter, 0, 20, "price,asc");
+        var csv = context.getBean(FuneralRequestCsvService.class);
+        var exported = new FuneralRequestCsv().read(csv.export(filter, "price,asc"));
+        assertNull(exported.fileError());
+        assertEquals(1, exported.rows().size());
+        assertEquals(page.content().get(0).getRequestCode(), exported.rows().get(0).fields().get("requestCode"));
+        filter.setArchived(true);
+        assertTrue(requestService.findForExport(filter, "price,asc").isEmpty());
+    }
+
+    @Test
+    void csvPreviewLeavesDatabaseStateAssociationsVersionsAndSequenceUntouched() throws Exception {
+        FuneralRequest existing = requests.saveAndFlush(newRequest());
+        Tag tag = context.getBean(TagService.class).create("CSV");
+        requestService.addTagByUuid(existing.getUuid(), tag.getId());
+        String header = "requestCode,deceasedFullName,client,ceremonyDate,ceremonyType,status,price,urgent\n";
+        String file = header + "PREVIEW-NEW,Новая,1," + LocalDate.now().plusDays(5) + ",1,NEW,100,true\n"
+                + existing.getRequestCode() + ",Изменённая,1," + existing.getCeremonyDate() + ",1,CONFIRMED,200,true\n";
+        String before = csvDatabaseSnapshot();
+        var result = context.getBean(FuneralRequestCsvService.class).preview(
+                file.getBytes(java.nio.charset.StandardCharsets.UTF_8), CsvImportMode.UPSERT_BY_REQUEST_CODE);
+        assertEquals(2, result.validCount());
+        assertEquals(0, result.errorCount());
+        assertEquals(before, csvDatabaseSnapshot());
+    }
+
+    @Test
+    void repeatedCsvUpsertCreatesOneRequestWithImportedCodeThenUpdatesIt() throws Exception {
+        FuneralRequestCsvService csv = context.getBean(FuneralRequestCsvService.class);
+        String text = "requestCode,deceasedFullName,client,ceremonyDate,ceremonyType,status,price\n"
+                + "IMPORT-105,Первая версия,1," + LocalDate.now().plusDays(5) + ",1,NEW,100\n";
+        byte[] file = text.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        long before = requests.count();
+        var first = csv.apply(file, CsvImportMode.UPSERT_BY_REQUEST_CODE);
+        assertTrue(first.errors().isEmpty());
+        assertTrue(first.successful().get(0).created());
+        assertEquals("IMPORT-105", first.successful().get(0).requestCode());
+        assertEquals(before + 1, requests.count());
+        FuneralRequest original = requests.findByRequestCode("IMPORT-105").orElseThrow();
+        var second = csv.apply(file, CsvImportMode.UPSERT_BY_REQUEST_CODE);
+        assertTrue(second.errors().isEmpty());
+        assertFalse(second.successful().get(0).created());
+        assertEquals(original.getUuid(), second.successful().get(0).uuid());
+        assertEquals(before + 1, requests.count());
+        FuneralRequest updated = requests.findByRequestCode("IMPORT-105").orElseThrow();
+        assertEquals(original.getVersion() + 1, updated.getVersion());
+        assertEquals(original.getCreatedAt(), updated.getCreatedAt());
+        assertEquals(original.getId(), updated.getId());
+        var changed = csv.apply(text.replace("Первая версия", "Вторая версия").getBytes(java.nio.charset.StandardCharsets.UTF_8),
+                CsvImportMode.UPSERT_BY_REQUEST_CODE);
+        assertTrue(changed.errors().isEmpty());
+        assertEquals(before + 1, requests.count());
+        assertEquals("Вторая версия", requests.findByRequestCode("IMPORT-105").orElseThrow().getDeceasedFullName());
+        assertEquals(1, csv.apply(file, CsvImportMode.CREATE_ONLY).errors().size());
+        try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
+            assertEquals("23514", assertThrows(java.sql.SQLException.class,
+                    () -> statement.execute("UPDATE funeral_requests SET request_code = 'CHANGED' WHERE request_code = 'IMPORT-105'"))
+                    .getSQLState());
+            assertEquals("23505", assertThrows(java.sql.SQLException.class, () -> statement.execute("""
+                    INSERT INTO funeral_requests(client_id, deceased_full_name, ceremony_date, ceremony_type_id, price, request_code)
+                    VALUES (1, 'Дубликат', DATE '2099-01-01', 1, 100, 'IMPORT-105')
+                    """)).getSQLState());
+        }
+    }
+
+    @Test
+    void csvApplyCreatesWithGeneratedCodeAndUpsertsWithoutChangingIdentity() {
+        FuneralRequestCsvService csv = context.getBean(FuneralRequestCsvService.class);
+        String header = "requestCode,deceasedFullName,client,ceremonyDate,ceremonyType,status,price,urgent\n";
+        String create = header + "SOURCE-CODE,CSV новая,1," + LocalDate.now().plusDays(5) + ",1,NEW,100,true\n";
+        var created = csv.apply(create.getBytes(java.nio.charset.StandardCharsets.UTF_8), CsvImportMode.CREATE_ONLY);
+        assertEquals(1, created.successful().size());
+        var identity = created.successful().get(0);
+        assertTrue(identity.created());
+        assertNotNull(identity.uuid());
+        assertTrue(identity.requestCode().startsWith("FR-"));
+        assertNotEquals("SOURCE-CODE", identity.requestCode());
+        FuneralRequest saved = requests.findByUuid(identity.uuid()).orElseThrow();
+        String update = header + identity.requestCode() + ",CSV изменена,1," + saved.getCeremonyDate() + ",1,CONFIRMED,200,false\n";
+        var applied = csv.apply(update.getBytes(java.nio.charset.StandardCharsets.UTF_8), CsvImportMode.UPSERT_BY_REQUEST_CODE);
+        assertEquals(1, applied.successful().size());
+        assertFalse(applied.successful().get(0).created());
+        FuneralRequest updated = requests.findByUuid(identity.uuid()).orElseThrow();
+        assertEquals(saved.getUuid(), updated.getUuid());
+        assertEquals(saved.getRequestCode(), updated.getRequestCode());
+        assertEquals(saved.getCreatedAt(), updated.getCreatedAt());
+        assertEquals(saved.getVersion() + 1, updated.getVersion());
+        assertEquals(new BigDecimal("200.00"), updated.getPrice());
+        assertEquals(RequestStatus.CONFIRMED, updated.getStatus());
+        assertFalse(updated.isUrgent());
+        assertEquals(1, csv.apply(update.getBytes(java.nio.charset.StandardCharsets.UTF_8), CsvImportMode.CREATE_ONLY).errors().size());
+    }
+
+    @Test
+    void csvDatabaseFailureRollsBackOneRowAndReportsTheOtherCommits() throws Exception {
+        long before = requests.count();
+        try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
+            statement.execute("ALTER TABLE funeral_requests ADD CONSTRAINT reject_csv_name CHECK (deceased_full_name <> 'FAIL_CSV')");
+        }
+        try {
+            String header = "deceasedFullName,client,ceremonyDate,ceremonyType,status,price\n";
+            String suffix = ",1," + LocalDate.now().plusDays(5) + ",1,NEW,100\n";
+            String file = header + "CSV первая" + suffix + "FAIL_CSV" + suffix + "CSV последняя" + suffix;
+            var result = context.getBean(FuneralRequestCsvService.class).apply(
+                    file.getBytes(java.nio.charset.StandardCharsets.UTF_8), CsvImportMode.CREATE_ONLY);
+            assertEquals(2, result.successful().size());
+            assertEquals(2, result.successful().get(0).line());
+            assertEquals(4, result.successful().get(1).line());
+            assertEquals(1, result.errors().size());
+            assertEquals(3, result.errors().get(0).line());
+            assertEquals(before + 2, requests.count());
+            assertTrue(requestService.search("FAIL_CSV", null).isEmpty());
+        } finally {
+            try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
+                statement.execute("ALTER TABLE funeral_requests DROP CONSTRAINT reject_csv_name");
+            }
+        }
+    }
+
+    private String csvDatabaseSnapshot() throws Exception {
+        StringBuilder snapshot = new StringBuilder();
+        try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
+            for (String table : List.of("funeral_requests", "clients", "ceremony_types")) {
+                try (ResultSet result = statement.executeQuery("SELECT jsonb_agg(to_jsonb(t) ORDER BY id)::text FROM " + table + " t")) {
+                    assertTrue(result.next());
+                    snapshot.append(result.getString(1));
+                }
+            }
+            try (ResultSet result = statement.executeQuery("SELECT jsonb_agg(to_jsonb(t) ORDER BY funeral_request_id, tag_id)::text FROM funeral_request_tags t")) {
+                assertTrue(result.next());
+                snapshot.append(result.getString(1));
+            }
+            try (ResultSet result = statement.executeQuery("SELECT last_value FROM funeral_requests_id_seq")) {
+                assertTrue(result.next());
+                snapshot.append(result.getLong(1));
+            }
+        }
+        return snapshot.toString();
     }
 
     @Test

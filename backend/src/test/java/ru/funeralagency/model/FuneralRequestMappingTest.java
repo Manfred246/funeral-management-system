@@ -17,12 +17,12 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class FuneralRequestMappingTest {
     @Test
-    void requestCodeIsReadOnlyAndRetrievedAfterInsert() throws Exception {
+    void requestCodeCanBeInsertedButNotUpdatedAndIsRetrievedAfterInsert() throws Exception {
         var field = FuneralRequest.class.getDeclaredField("requestCode");
         Column column = field.getAnnotation(Column.class);
         assertNotNull(column);
         assertEquals("request_code", column.name());
-        assertFalse(column.insertable());
+        assertTrue(column.insertable());
         assertFalse(column.updatable());
         assertFalse(column.nullable());
         assertTrue(column.unique());
@@ -30,7 +30,7 @@ class FuneralRequestMappingTest {
         Generated generated = field.getAnnotation(Generated.class);
         assertNotNull(generated);
         assertArrayEquals(new EventType[]{EventType.INSERT}, generated.event());
-        assertFalse(generated.writable());
+        assertTrue(generated.writable());
     }
 
     @Test

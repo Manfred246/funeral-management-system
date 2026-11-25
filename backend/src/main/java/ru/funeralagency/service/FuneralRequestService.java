@@ -66,25 +66,30 @@ public class FuneralRequestService {
 
     @Transactional
     public FuneralRequest create(FuneralRequest request, Long clientId, Long ceremonyTypeId) {
+        return createNewRequest(request, clientId, ceremonyTypeId, null);
+    }
+
+    @Transactional
+    public FuneralRequest createFromImport(FuneralRequest request, Long clientId, Long ceremonyTypeId, String requestCode) {
+        if (requestCode == null || requestCode.isBlank() || requestCode.trim().length() > 64) {
+            throw new ValidationException("Для CSV UPSERT укажите requestCode длиной от 1 до 64 символов");
+        }
+        return createNewRequest(request, clientId, ceremonyTypeId, requestCode.trim());
+    }
+
+    private FuneralRequest createNewRequest(FuneralRequest request, Long clientId, Long ceremonyTypeId, String requestCode) {
         if (request == null) {
             throw new ValidationException("Заявка не может быть null");
         }
         request.setId(null);
-        request.setStatus(RequestStatus.NEW);
-        request.setClient(findClient(clientId));
-        CeremonyType type = findCeremonyType(ceremonyTypeId);
-        if (!type.isEnabled()) {
-            throw new BusinessException("Отключённый тип церемонии нельзя назначить заявке");
-        }
-        request.setCeremonyType(type);
-        normalizeAndValidate(request);
+        prepareForCreate(request, clientId, ceremonyTypeId);
         request.setPrice(request.getPrice().setScale(2));
         // PostgreSQL TIMESTAMP хранит микросекунды; ответ совпадает с последующим чтением БД.
         LocalDateTime now = LocalDateTime.now().truncatedTo(ChronoUnit.MICROS);
         request.setCreatedAt(now);
         request.setUpdatedAt(now);
         request.setUuid(UUID.randomUUID());
-        request.setRequestCode(null);
+        request.setRequestCode(requestCode);
         request.setPriority(calculatePriority(request.isUrgent(), now, request.getCeremonyDate()));
         request.setArchived(false);
         request.setVersion(null);
@@ -94,6 +99,22 @@ public class FuneralRequestService {
     public List<FuneralRequest> findAll() {
         return requestRepository.findAll(
                 FuneralRequestSpecifications.matching(new FuneralRequestFilterDto()), Sort.by("id"));
+    }
+
+    @Transactional(readOnly = true)
+    public List<FuneralRequest> findForExport(FuneralRequestFilterDto filter, String sort) {
+        validateFilters(filter);
+        return requestRepository.findAll(FuneralRequestSpecifications.matching(filter), parseSort(sort));
+    }
+
+    @Transactional(readOnly = true)
+    public void validateCreate(FuneralRequest candidate, Long clientId, Long ceremonyTypeId) {
+        prepareForCreate(candidate, clientId, ceremonyTypeId);
+    }
+
+    @Transactional(readOnly = true)
+    public void validateUpdate(UUID uuid, FuneralRequest candidate, Long clientId, Long ceremonyTypeId, Long version) {
+        prepareForUpdate(getByUuid(uuid), candidate, clientId, ceremonyTypeId, version);
     }
 
     @Transactional(readOnly = true)
@@ -136,21 +157,7 @@ public class FuneralRequestService {
         }
 
         FuneralRequest existing = getByUuid(uuid);
-        if (version == null || version < 0) {
-            throw new ValidationException("Укажите неотрицательную версию заявки");
-        }
-        if (!version.equals(existing.getVersion())) {
-            throw new OptimisticLockingFailureException("Версия заявки устарела");
-        }
-        FuneralRequestValidationRules.validateStatusTransition(existing.getStatus(), request.getStatus());
-        request.setClient(findClient(clientId));
-        CeremonyType type = findCeremonyType(ceremonyTypeId);
-        if (!type.isEnabled() && !type.getId().equals(existing.getCeremonyType().getId())) {
-            throw new BusinessException("Отключённый тип церемонии нельзя назначить заявке");
-        }
-        request.setCeremonyType(type);
-        FuneralRequestValidationRules.normalize(request);
-        FuneralRequestValidationRules.validateForUpdate(request, existing.getCeremonyDate());
+        prepareForUpdate(existing, request, clientId, ceremonyTypeId, version);
         existing.setClient(request.getClient());
         existing.setDeceasedFullName(request.getDeceasedFullName());
         existing.setCeremonyDate(request.getCeremonyDate());
@@ -166,6 +173,42 @@ public class FuneralRequestService {
         existing.setPriority(calculatePriority(existing.isUrgent(), existing.getCreatedAt(), existing.getCeremonyDate()));
         existing.setUpdatedAt(now);
         return requestRepository.saveAndFlush(existing);
+    }
+
+    private void prepareForCreate(FuneralRequest request, Long clientId, Long ceremonyTypeId) {
+        if (request == null) {
+            throw new ValidationException("Заявка не может быть null");
+        }
+        request.setStatus(RequestStatus.NEW);
+        request.setClient(findClient(clientId));
+        CeremonyType type = findCeremonyType(ceremonyTypeId);
+        if (!type.isEnabled()) {
+            throw new BusinessException("Отключённый тип церемонии нельзя назначить заявке");
+        }
+        request.setCeremonyType(type);
+        normalizeAndValidate(request);
+    }
+
+    private void prepareForUpdate(FuneralRequest existing, FuneralRequest request,
+                                  Long clientId, Long ceremonyTypeId, Long version) {
+        if (request == null) {
+            throw new ValidationException("Заявка не может быть null");
+        }
+        if (version == null || version < 0) {
+            throw new ValidationException("Укажите неотрицательную версию заявки");
+        }
+        if (!version.equals(existing.getVersion())) {
+            throw new OptimisticLockingFailureException("Версия заявки устарела");
+        }
+        FuneralRequestValidationRules.validateStatusTransition(existing.getStatus(), request.getStatus());
+        request.setClient(findClient(clientId));
+        CeremonyType type = findCeremonyType(ceremonyTypeId);
+        if (!type.isEnabled() && !type.getId().equals(existing.getCeremonyType().getId())) {
+            throw new BusinessException("Отключённый тип церемонии нельзя назначить заявке");
+        }
+        request.setCeremonyType(type);
+        FuneralRequestValidationRules.normalize(request);
+        FuneralRequestValidationRules.validateForUpdate(request, existing.getCeremonyDate());
     }
 
     static int calculatePriority(boolean urgent, LocalDateTime createdAt, LocalDate ceremonyDate) {

@@ -151,6 +151,21 @@ class FuneralRequestControllerTest {
     }
 
     @Test
+    void normalRestPostCannotAssignImportedRequestCode() throws Exception {
+        when(clients.findById(1L)).thenReturn(Optional.of(stored.getClient()));
+        when(ceremonyTypes.findById(1L)).thenReturn(Optional.of(stored.getCeremonyType()));
+        when(requests.saveAndFlush(any())).thenAnswer(invocation -> {
+            FuneralRequest request = invocation.getArgument(0);
+            org.junit.jupiter.api.Assertions.assertNull(request.getRequestCode());
+            return request;
+        });
+        mvc.perform(post("/api/requests").contentType(MediaType.APPLICATION_JSON)
+                        .content(updateBody("3").replace("{", "{\"requestCode\":\"IMPORTED-CODE\",")))
+                .andExpect(status().isCreated());
+        verify(requests).saveAndFlush(any());
+    }
+
+    @Test
     void createLoadsCustomTypeByIdRatherThanAcceptingAnEnum() throws Exception {
         CeremonyType custom = new CeremonyType(3L, "MEMORIAL", "Прощание", true);
         when(clients.findById(1L)).thenReturn(Optional.of(stored.getClient()));

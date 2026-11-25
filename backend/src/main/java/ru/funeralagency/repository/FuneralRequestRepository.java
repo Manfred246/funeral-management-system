@@ -20,6 +20,9 @@ public interface FuneralRequestRepository extends JpaRepository<FuneralRequest, 
     @EntityGraph(attributePaths = {"client", "ceremonyType", "tags"})
     Optional<FuneralRequest> findByUuid(UUID uuid);
 
+    @EntityGraph(attributePaths = {"client", "ceremonyType"})
+    Optional<FuneralRequest> findByRequestCode(String requestCode);
+
     // Collection fetch join применяется только к непагинируемым legacy-спискам.
     @Override
     @EntityGraph(attributePaths = {"client", "ceremonyType", "tags"})

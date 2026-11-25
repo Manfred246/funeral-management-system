@@ -19,6 +19,7 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
+import org.springframework.web.multipart.support.MissingServletRequestPartException;
 import ru.funeralagency.dto.ApiErrorResponse;
 import ru.funeralagency.exception.BusinessException;
 import ru.funeralagency.exception.EntityNotFoundException;
@@ -118,6 +119,11 @@ public class ApiExceptionHandler {
             MissingServletRequestParameterException exception, HttpServletRequest request
     ) {
         return response(HttpStatus.BAD_REQUEST, "Не указан параметр: " + exception.getParameterName(), request);
+    }
+
+    @ExceptionHandler(MissingServletRequestPartException.class)
+    public ResponseEntity<ApiErrorResponse> handleMissingFile(HttpServletRequest request) {
+        return response(HttpStatus.BAD_REQUEST, "Укажите CSV файл в поле file", request);
     }
 
     @ExceptionHandler(NoResourceFoundException.class)

@@ -54,6 +54,8 @@ public class SecurityConfig {
                                 .hasAnyRole("MANAGER", "ADMIN")
                         .requestMatchers(HttpMethod.POST, "/api/requests/*/notes")
                                 .hasAnyRole("MANAGER", "ADMIN")
+                        .requestMatchers(HttpMethod.POST, "/api/requests/import/preview", "/api/requests/import/apply")
+                                .hasAnyRole("MANAGER", "ADMIN")
                         .requestMatchers(HttpMethod.PUT, "/api/requests/*/notes/*")
                                 .hasAnyRole("MANAGER", "ADMIN")
                         .requestMatchers(HttpMethod.DELETE, "/api/requests/*/notes/*")

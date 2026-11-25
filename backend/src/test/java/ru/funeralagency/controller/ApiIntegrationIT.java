@@ -22,6 +22,7 @@ import ru.funeralagency.repository.UserRepository;
 import ru.funeralagency.security.JwtService;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import ru.funeralagency.repository.FuneralRequestRepository;
+import org.springframework.mock.web.MockMultipartFile;
 
 import java.io.ByteArrayInputStream;
 import java.nio.file.Files;
@@ -39,6 +40,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -138,6 +140,45 @@ class ApiIntegrationIT {
             throw new IllegalStateException("Для PostgreSQL-тестов задайте " + name);
         }
         return value;
+    }
+
+    @Test
+    void normalRestCreateIgnoresCodeAndTriggerReturnsGeneratedValue() throws Exception {
+        var body = (com.fasterxml.jackson.databind.node.ObjectNode) objectMapper.readTree(requestBody(1, "100", null));
+        body.put("requestCode", "CLIENT-SUPPLIED-CODE");
+        var result = mockMvc.perform(post("/api/requests").contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(body)))
+                .andExpect(status().isCreated()).andReturn();
+        JsonNode created = objectMapper.readTree(result.getResponse().getContentAsByteArray());
+        String expected = String.format(java.util.Locale.ROOT, "FR-%d-%06d",
+                java.time.LocalDateTime.parse(created.get("createdAt").asText()).getYear(), created.get("id").asLong());
+        assertEquals(expected, created.get("requestCode").asText());
+        assertFalse(context.getBean(FuneralRequestRepository.class).findByRequestCode("CLIENT-SUPPLIED-CODE").isPresent());
+    }
+
+    @Test
+    void csvMultipartPreviewAndApplyAndFilteredDownloadWorkTogether() throws Exception {
+        long count = context.getBean(FuneralRequestRepository.class).count();
+        byte[] file = ("deceasedFullName,client,ceremonyDate,ceremonyType,status,price\n"
+                + "CSV импорт,1," + LocalDate.now().plusDays(5) + ",1,NEW,100\n")
+                .getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        mockMvc.perform(multipart("/api/requests/import/preview")
+                        .file(new MockMultipartFile("file", "requests.csv", "text/csv", file)).param("mode", "CREATE_ONLY"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.validCount").value(1))
+                .andExpect(jsonPath("$.errorCount").value(0));
+        assertEquals(count, context.getBean(FuneralRequestRepository.class).count());
+        mockMvc.perform(multipart("/api/requests/import/apply")
+                        .file(new MockMultipartFile("file", "requests.csv", "text/csv", file)).param("mode", "CREATE_ONLY"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.successful.length()").value(1))
+                .andExpect(jsonPath("$.successful[0].requestCode").isNotEmpty()).andExpect(jsonPath("$.errors").isEmpty());
+        assertEquals(count + 1, context.getBean(FuneralRequestRepository.class).count());
+        byte[] export = mockMvc.perform(get("/api/requests/export/csv").param("q", "CSV импорт").param("minPrice", "100").param("maxPrice", "100"))
+                .andExpect(status().isOk()).andExpect(content().contentType("text/csv;charset=UTF-8"))
+                .andReturn().getResponse().getContentAsByteArray();
+        var parsed = new ru.funeralagency.service.FuneralRequestCsv().read(export);
+        assertNull(parsed.fileError());
+        assertEquals(1, parsed.rows().size());
+        assertEquals("CSV импорт", parsed.rows().get(0).fields().get("deceasedFullName"));
     }
 
     @Test

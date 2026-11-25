@@ -35,9 +35,9 @@ public class FuneralRequest {
     @Column(nullable = false, unique = true, updatable = false)
     private UUID uuid;
 
-    // PostgreSQL вычисляет код из identity ID и created_at в том же INSERT.
-    @Generated(event = EventType.INSERT)
-    @Column(name = "request_code", nullable = false, unique = true, insertable = false, updatable = false, length = 64)
+    // INSERT-триггер принимает код CSV или генерирует его; Hibernate получает итоговое значение.
+    @Generated(event = EventType.INSERT, writable = true)
+    @Column(name = "request_code", nullable = false, unique = true, updatable = false, length = 64)
     private String requestCode;
 
     @ManyToOne(optional = false)

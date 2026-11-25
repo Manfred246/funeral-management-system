@@ -36,6 +36,7 @@ createdb -h localhost -p 5432 -U postgres -W funeral_management
 `V4__manage_ceremony_types.sql` добавляет code/enabled существующему справочнику типов церемонии.
 `V5__create_tags.sql` создаёт tags и таблицу связей funeral_request_tags; прежние данные не изменяются.
 `V6__create_request_notes.sql` добавляет заметки заявок с автором из users.
+`V7__allow_imported_request_codes.sql` сохраняет коды, заменяя generated column на обычную колонку с INSERT/UPDATE-триггером.
 Hibernate работает с `spring.jpa.hibernate.ddl-auto=validate` и только проверяет mapping.
 
 Для демонстрационных данных после первого успешного запуска backend можно выполнить:
@@ -403,11 +404,13 @@ legacy filter сохраняет dateFrom/dateTo и параметр ceremonyTyp
 
 Для новой заявки `uuid` создаётся через `UUID.randomUUID()`.
 Код имеет формат `FR-{год createdAt}-{id, минимум 6 цифр}`, например `FR-2026-000015`.
-V2 определяет `request_code` как PostgreSQL stored generated column: БД вычисляет
-его из identity ID и `created_at` при INSERT, Hibernate получает результат через
-`@Generated`. Создание требует одного INSERT и не требует UPDATE для номера.
+V2 первоначально определяет `request_code` как PostgreSQL stored generated column.
+V7 снимает generation expression, сохраняя значения и UNIQUE/NOT NULL.
+INSERT-триггер вычисляет код из identity ID и `created_at`, если передан NULL,
+или сохраняет явно переданный CSV UPSERT код. Hibernate получает результат через
+`@Generated(event = INSERT, writable = true)`. Создание требует одного INSERT и не требует UPDATE для номера.
 Существующие строки получают код по тому же правилу. Код имеет ограничения UNIQUE
-и NOT NULL, напрямую записать его нельзя. При редактировании через API UUID, код
+и NOT NULL; UPDATE-триггер запрещает менять его после создания. При редактировании через API UUID, код
 и `createdAt` сохраняются.
 
 Priority хранится как результат последнего создания/редактирования:
@@ -562,6 +565,83 @@ Archive/restore и tags используют прежние методы и пр
 архивирование само по себе не запрещает смену статуса; для тегов действует отдельный запрет.
 Повторное назначение текущего статуса успешно без сохранения и изменения updatedAt/version.
 
+## CSV import/export
+
+Старый XLSX `/api/requests/export` сохранён.
+
+| Endpoint | Права | Вход / ответ |
+|---|---|---|
+| GET `/api/requests/export/csv` | VIEWER/MANAGER/ADMIN | UTF-8 CSV attachment |
+| POST `/api/requests/import/preview` | MANAGER/ADMIN | multipart `file`, `mode`; validCount/errorCount/errors |
+| POST `/api/requests/import/apply` | MANAGER/ADMIN | multipart `file`, `mode`; successful/errors |
+
+Export принимает те же фильтры q, client, ceremonyTypeId, status, urgent, priority,
+tag, archived, minPrice, maxPrice и ту же разрешённую sort, что основной GET /api/requests.
+Используется прежняя Specification и проверка фильтров в Service; отбор выполняет БД.
+Экспортируются все подходящие записи без page/size; archived по умолчанию false.
+
+Формат — Apache Commons CSV 1.14.1, RFC 4180: разделитель запятая, кавычка `"`,
+удвоение кавычек внутри поля, поддержка запятых и переносов строк в quoted fields.
+Кодировка UTF-8; при импорте допустим BOM. Заголовки чувствительны к регистру.
+
+Колонки экспорта:
+
+```text
+requestCode,deceasedFullName,client,ceremonyDate,ceremonyType,status,price,urgent,priority,archived,createdAt,comment
+```
+
+`client` и `ceremonyType` содержат числовые ID существующих записей.
+status — имя enum (например NEW или CONFIRMED), price — десятичное число с точкой,
+boolean — true/false, ceremonyDate — ISO yyyy-MM-dd, createdAt — ISO LocalDateTime.
+Теги в CSV не включены и импортом не изменяются.
+
+Обязательные колонки и значения импорта: deceasedFullName, client, ceremonyDate,
+ceremonyType, status, price. requestCode может отсутствовать или быть пустым только в CREATE_ONLY.
+Для UPSERT_BY_REQUEST_CODE он обязателен (1–64 символа, пробелы по краям удаляются).
+urgent необязателен: для новой заявки false, для существующей сохраняется при отсутствии колонки.
+Если comment отсутствует, комментарий существующей заявки сохраняется; пустой comment очищает его.
+priority, archived и createdAt — информационные экспортные поля: при наличии проверяется формат,
+но они не присваиваются заявке. Priority пересчитывает Service, архивирование выполняется своим API.
+Неизвестные или повторные заголовки и повреждённый CSV отклоняются до обработки любых строк.
+
+Оба import endpoint принимают `mode=CREATE_ONLY` или `mode=UPSERT_BY_REQUEST_CODE`.
+Preview только читает БД, формирует отдельные объекты-кандидаты и использует общие
+проверки создания/обновления Service. Он не сохраняет заявки, не меняет timestamps,
+version или существующие associations. Ошибки содержат line и message; line —
+номер физической строки начала записи, заголовок — строка 1.
+При повреждённом синтаксисе возвращается одна ошибка файла, validCount=0.
+Повтор непустого requestCode в файле делает ошибочными все строки с этим кодом.
+
+CREATE_ONLY создаёт новые заявки; существующий requestCode даёт ошибку строки.
+UPSERT ищет по requestCode: найденная заявка обновляется через updateByUuid,
+ненайденная создаётся через create. UUID, код и createdAt существующей заявки сохраняются.
+Действуют прежние правила Client/CeremonyType, цены, дат и переходов статусов.
+Новая заявка обязана иметь status=NEW; другой статус возвращает ошибку.
+
+**UPSERT сохраняет переданный requestCode при создании.** Повтор того же CSV
+находит эту запись и обновляет её; uuid, код и createdAt сохраняются.
+CREATE_ONLY и обычный POST /api/requests используют серверную генерацию FR-{year}-{id padded}.
+В обычном REST CreateDto нет requestCode; Service дополнительно очищает переданный код.
+Назначение кода доступно только внутреннему сценарию createFromImport.
+Apply возвращает фактические uuid/requestCode и признак created.
+
+Apply повторно валидирует файл и строки; сохранённого preview-состояния на сервере нет.
+Каждая строка сохраняется в собственной транзакции. Успех учитывается после commit;
+ошибки отдельных строк не отменяют остальные и возвращаются вместе с successful.
+Ошибка синтаксиса в конце файла не приводит к записи его начала.
+Пример ответа apply:
+
+```json
+{
+  "successful": [{"line":2,"uuid":"8d44b5ce-45e2-487d-81d8-b714004db0d7","requestCode":"FR-2026-000015","created":true}],
+  "errors": [{"line":3,"message":"Стоимость заявки не может быть отрицательной"}]
+}
+```
+
+Корректно принятый файл, включая ошибки строк, возвращает HTTP 200.
+Неверный mode, отсутствующий file или неправильные параметры export дают 400;
+без JWT — 401, VIEWER при импорте — 403. SQL и технические детали в errors не возвращаются.
+
 ## Бизнес-правила
 
 - новая заявка создаётся со статусом `NEW`;
@@ -605,7 +685,7 @@ mvn clean package
 Интеграционные тесты требуют реальную PostgreSQL и переменные `TEST_DB_*`.
 Они используют отдельные временные схемы, Flyway запускается до Hibernate validate;
 таблицы `public` не изменяются. Проверяются V1 на пустой схеме, baseline схемы КР №1
-с сохранением данных и применением V2–V6, JPA CRUD, поиск, фильтры, сортировка и текущий REST API.
+с сохранением данных и применением V2–V7, JPA CRUD, поиск, фильтры, сортировка и текущий REST API.
 Для тегов проверяются FK/уникальность, идемпотентность связей, изменение version,
 сохранение тегов при удалении заявки, tag-фильтр с пагинацией и batch fetching.
 Для заметок проверяются CRUD, автор, принадлежность заявке, архивирование,
@@ -613,6 +693,9 @@ FK/уникальность/непустой текст и удаление вм
 Для bulk проверяются все пять операций, partial success, роли, валидация,
 ошибки статусов/тегов и транзакционные границы. PostgreSQL-тесты дополнительно
 проверяют version и откат только одной записи при ошибке БД.
+CSV-тесты покрывают фильтры, quoting/commas/newlines, preview без изменений,
+CREATE_ONLY/UPSERT, смешанные результаты и права. PostgreSQL-тесты дополнительно
+сверяют snapshot БД/sequence до и после preview, generated code и откат ошибочной строки.
 Пользователь тестовой БД должен иметь право создавать и удалять тестовые схемы:
 
 ```powershell

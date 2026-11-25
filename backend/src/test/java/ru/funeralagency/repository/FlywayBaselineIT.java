@@ -21,6 +21,43 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class FlywayBaselineIT {
     @Test
+    void v7PreservesCodesAlreadyGeneratedByV6() throws Exception {
+        String url = requiredEnvironment("TEST_DB_URL");
+        String username = requiredEnvironment("TEST_DB_USERNAME");
+        String password = requiredEnvironment("TEST_DB_PASSWORD");
+        String schema = "code_migration_test_" + UUID.randomUUID().toString().replace("-", "");
+        DriverManagerDataSource admin = new DriverManagerDataSource(url, username, password);
+        try (Connection connection = admin.getConnection(); Statement statement = connection.createStatement()) {
+            statement.execute("CREATE SCHEMA " + schema);
+        }
+        try {
+            String testUrl = url + (url.contains("?") ? "&" : "?") + "currentSchema=" + schema;
+            DriverManagerDataSource source = new DriverManagerDataSource(testUrl, username, password);
+            Flyway.configure().dataSource(source).schemas(schema).defaultSchema(schema).target("6").load().migrate();
+            String before;
+            try (Connection connection = source.getConnection(); Statement statement = connection.createStatement()) {
+                statement.execute(Files.readString(Path.of(System.getProperty("project.root"), "database", "seed.sql")));
+                try (ResultSet result = statement.executeQuery("SELECT string_agg(request_code, ',' ORDER BY id) FROM funeral_requests")) {
+                    assertTrue(result.next());
+                    before = result.getString(1);
+                    assertNotNull(before);
+                }
+            }
+            var migration = Flyway.configure().dataSource(source).schemas(schema).defaultSchema(schema).load().migrate();
+            assertEquals(1, migration.migrationsExecuted);
+            try (Connection connection = source.getConnection(); Statement statement = connection.createStatement();
+                 ResultSet result = statement.executeQuery("SELECT string_agg(request_code, ',' ORDER BY id) FROM funeral_requests")) {
+                assertTrue(result.next());
+                assertEquals(before, result.getString(1));
+            }
+        } finally {
+            try (Connection connection = admin.getConnection(); Statement statement = connection.createStatement()) {
+                statement.execute("DROP SCHEMA " + schema + " CASCADE");
+            }
+        }
+    }
+
+    @Test
     void existingKr1SchemaIsBaselinedWithoutChangingData() throws Exception {
         String url = requiredEnvironment("TEST_DB_URL");
         String username = requiredEnvironment("TEST_DB_USERNAME");
@@ -65,7 +102,7 @@ class FlywayBaselineIT {
                 assertEquals("validate", context.getEnvironment().getProperty("spring.jpa.hibernate.ddl-auto"));
                 Flyway flyway = context.getBean(Flyway.class);
                 var applied = flyway.info().applied();
-                assertEquals(6, applied.length);
+                assertEquals(7, applied.length);
                 assertEquals("1", applied[0].getVersion().getVersion());
                 assertEquals("BASELINE", applied[0].getType().name());
                 assertEquals("2", applied[1].getVersion().getVersion());
@@ -76,6 +113,7 @@ class FlywayBaselineIT {
                 assertEquals("SQL", applied[3].getType().name());
                 assertEquals("5", applied[4].getVersion().getVersion());
                 assertEquals("6", applied[5].getVersion().getVersion());
+                assertEquals("7", applied[6].getVersion().getVersion());
                 assertEquals(0, context.getBean(RequestNoteRepository.class).count());
                 assertEquals(0, context.getBean(TagRepository.class).count());
                 assertEquals(0, flyway.migrate().migrationsExecuted);
