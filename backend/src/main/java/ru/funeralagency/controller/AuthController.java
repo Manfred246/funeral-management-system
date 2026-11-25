@@ -1,5 +1,10 @@
 package ru.funeralagency.controller;
 
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.media.Content;
+
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.security.SecurityRequirements;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -26,28 +31,33 @@ public class AuthController {
     }
 
     @PostMapping("/login")
+    @SecurityRequirements
     public AuthTokensDto login(@Valid @RequestBody LoginDto dto) {
         return authService.login(dto.login(), dto.password());
     }
 
     @PostMapping("/refresh")
+    @SecurityRequirements
     public AuthTokensDto refresh(@Valid @RequestBody RefreshTokenDto dto) {
         return authService.refresh(dto.refreshToken());
     }
 
     @PostMapping("/logout")
+    @SecurityRequirements
+    @ApiResponse(responseCode = "204", description = "Операция выполнена", content = @Content)
     public ResponseEntity<Void> logout(@Valid @RequestBody RefreshTokenDto dto) {
         authService.logout(dto.refreshToken());
         return ResponseEntity.noContent().build();
     }
 
     @GetMapping("/me")
-    public AuthUserDto me(@AuthenticationPrincipal AuthenticatedUser user) {
+    public AuthUserDto me(@Parameter(hidden = true) @AuthenticationPrincipal AuthenticatedUser user) {
         return authService.me(user.uuid());
     }
 
     @PostMapping("/change-password")
-    public ResponseEntity<Void> changePassword(@AuthenticationPrincipal AuthenticatedUser user,
+    @ApiResponse(responseCode = "204", description = "Операция выполнена", content = @Content)
+    public ResponseEntity<Void> changePassword(@Parameter(hidden = true) @AuthenticationPrincipal AuthenticatedUser user,
                                               @Valid @RequestBody ChangePasswordDto dto) {
         authService.changePassword(user.uuid(), dto.currentPassword(), dto.newPassword());
         return ResponseEntity.noContent().build();

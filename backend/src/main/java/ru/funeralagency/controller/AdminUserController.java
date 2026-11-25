@@ -1,5 +1,7 @@
 package ru.funeralagency.controller;
 
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -36,6 +38,7 @@ public class AdminUserController {
     }
 
     @PostMapping
+    @ApiResponse(responseCode = "201", description = "Запись создана")
     public ResponseEntity<AdminUserDto> create(@Valid @RequestBody AdminUserCreateDto dto) {
         AdminUserDto created = service.create(dto);
         return ResponseEntity.created(URI.create("/api/admin/users/" + created.uuid())).body(created);

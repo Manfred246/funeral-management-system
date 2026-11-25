@@ -1,5 +1,9 @@
 package ru.funeralagency.controller;
 
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import org.springdoc.core.annotations.ParameterObject;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -28,7 +32,8 @@ public class FuneralRequestCsvController {
     }
 
     @GetMapping("/export/csv")
-    public ResponseEntity<byte[]> export(@ModelAttribute FuneralRequestFilterDto filter,
+    @ApiResponse(responseCode = "200", content = @Content(mediaType = "text/csv", schema = @Schema(type = "string", format = "binary")))
+    public ResponseEntity<byte[]> export(@ParameterObject @ModelAttribute FuneralRequestFilterDto filter,
                                          @RequestParam(defaultValue = "createdAt,desc") String sort) {
         return ResponseEntity.ok().contentType(MediaType.parseMediaType("text/csv;charset=UTF-8"))
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=funeral-requests.csv")

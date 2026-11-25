@@ -6,10 +6,12 @@ COPY pom.xml .
 COPY backend/pom.xml backend/pom.xml
 COPY backend/src backend/src
 
-RUN mvn -f backend/pom.xml clean package -DskipTests
+RUN mvn -B -f backend/pom.xml clean package
 
 
 FROM eclipse-temurin:21-jre
+
+RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 

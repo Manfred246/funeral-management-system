@@ -2,10 +2,11 @@
 
 Учебная система для оформления и обработки заявок ритуального агентства.
 
-Проект состоит из двух Maven-модулей:
+Проект состоит из трёх Maven-модулей:
 
 - `backend` — REST API на Spring Boot;
-- `console-client` — отдельный консольный клиент.
+- `console-client` — отдельный консольный клиент;
+- `javafx-client` — настольный JavaFX-клиент КР №2 (не адаптируется на этом этапе).
 
 Данные хранятся в PostgreSQL. Консольный клиент работает только через REST API:
 
@@ -17,7 +18,7 @@ Console Client → REST Controller → Service → Spring Data JPA Repository �
 
 - JDK 21;
 - Maven;
-- PostgreSQL;
+- PostgreSQL 17;
 - утилиты `createdb` и `psql` в `PATH` либо DBeaver.
 
 ## Создание базы данных
@@ -99,6 +100,8 @@ Backend использует следующие переменные окруж�
 $databaseCredential = Get-Credential -UserName postgres -Message 'Пароль PostgreSQL'
 $env:DB_USERNAME = $databaseCredential.UserName
 $env:DB_PASSWORD = $databaseCredential.GetNetworkCredential().Password
+# Предварительно задайте JWT_SECRET и, для первого запуска, APP_ADMIN_*
+# по инструкции в разделе «Секрет и первый ADMIN» ниже.
 mvn -pl backend spring-boot:run
 ```
 
@@ -811,20 +814,107 @@ try {
 }
 ```
 
-## Docker
+## Swagger / OpenAPI
 
-Существующий Compose запускает PostgreSQL 17 и backend на Java 21:
+Springdoc 2.10.1 генерирует спецификацию из фактических Controllers/DTO:
+
+- `/swagger-ui/index.html` (также `/swagger-ui.html`);
+- `/v3/api-docs` — JSON;
+- `/v3/api-docs.yaml` — YAML.
+
+UI, его ресурсы, swagger-config и API docs доступны только ADMIN с действительным
+`Authorization: Bearer <accessToken>` уже на первом запросе. Без JWT — JSON 401,
+VIEWER/MANAGER — JSON 403. ADMIN с временным паролем сначала должен сменить его
+через `/api/auth/change-password`. Public login/refresh/logout в спецификации
+не требуют access token; остальные операции используют HTTP Bearer JWT.
+
+Простое открытие адреса в браузере без Authorization не авторизует запрос.
+Для UI нужен браузер/HTTP-инструмент с настроенным Authorization для запросов к
+этому origin, включая загрузку HTML/JS/CSS/swagger-config. Кнопка Authorize в UI
+работает после загрузки страницы и задаёт Bearer для Try it out; публичного
+Swagger login/cookie/query-token обхода нет. Не передавайте JWT в URL.
+Пример получения JSON из PowerShell (access token уже получен через login):
 
 ```powershell
-docker compose build
-docker compose up
+$headers = @{ Authorization = "Bearer $accessToken" }
+Invoke-WebRequest 'http://localhost:8080/v3/api-docs' -Headers $headers -OutFile openapi.json
 ```
 
-Compose передаёт backend `DB_URL`, `DB_USERNAME`, `DB_PASSWORD` для подключения
-к сервису `postgres`. На новом volume существующие init-скрипты PostgreSQL
-создают схему КР №1 и демоданные; backend принимает её через Flyway baseline 1.
-На существующем volume init-скрипты не выполняются повторно, данные сохраняются.
-Новые миграции Flyway применяет при запуске backend.
+Документируются реальные статусы 201/204, page DTO, UUID paths, filters/sort,
+multipart CSV, binary CSV/XLSX и стандартный JSON ErrorResponse с correlationId.
+Authenticated principal не становится параметром API; credential inputs помечены write-only.
+Сохранение авторизации Swagger в local storage отключено.
 
-`docker compose down` сохраняет named volume. Для обновления backend удалять
-volume или запускать `down -v` не требуется.
+## Health
+
+Публичен только `GET /actuator/health`: краткий `{"status":"UP"}` без components,
+SQL, адресов подключения и exception details. При недоступной БД health может
+вернуть 503/DOWN. Другие Actuator endpoints по HTTP не выставляются; JMX exposure выключен.
+Healthcheck не требует JWT. Swagger не включает Actuator в бизнес-API.
+
+## Docker
+
+Compose запускает PostgreSQL 17 и Spring Boot backend на Java 21. Dockerfile
+собирает backend Maven-ом с unit-тестами и использует Java 21 JRE с curl для healthcheck.
+
+Скопируйте `.env.example` в `.env` и заполните локально. Реальные значения в Git не добавляются;
+`.env` также исключён из Docker build context. POSTGRES_PASSWORD и JWT_SECRET обязательны:
+
+| Переменная Compose | Назначение |
+|---|---|
+| POSTGRES_DB | База, default funeral_management |
+| POSTGRES_USER | Пользователь БД, default postgres |
+| POSTGRES_PASSWORD | Реальный пароль БД, без default |
+| JWT_SECRET | Стабильный случайный секрет, минимум 32 байта UTF-8, без default |
+| APP_ADMIN_LOGIN / APP_ADMIN_PASSWORD / APP_ADMIN_NAME | Bootstrap первого ADMIN; задаются вместе, только при пустой users |
+| BACKEND_PORT | Порт хоста, default 8080 |
+
+Для JDBC URL/логина/пароля backend Compose формирует DB_URL/DB_USERNAME/DB_PASSWORD
+из POSTGRES_*. При локальном запуске вне Docker эти три DB_* задаются напрямую.
+Первый ADMIN получает временный пароль; после login обязательна его смена.
+JWT_SECRET сохраняйте тем же между перезапусками. Значения секретов не передавайте
+через Docker build args и не выводите `.env`/развёрнутый compose config в публичные логи.
+
+```powershell
+Copy-Item .env.example .env
+# Заполните .env локально перед запуском.
+docker compose build
+docker compose up -d
+docker compose ps
+Invoke-RestMethod 'http://localhost:8080/actuator/health'
+```
+
+При другом BACKEND_PORT измените URL проверки. Healthcheck PostgreSQL использует
+pg_isready, backend — curl на /actuator/health; backend стартует после healthy PostgreSQL.
+Ему отведён start_period 60 секунд на startup/Flyway.
+
+На новом named volume init-скрипты создают исходную схему КР №1 и демоданные;
+Flyway принимает её через baseline 1 и применяет V2–V8. На существующем volume
+init-скрипты не выполняются повторно, Flyway применяет только новые миграции.
+POSTGRES_PASSWORD в .env должен соответствовать паролю существующей БД:
+изменение переменной само по себе не меняет пароль в уже созданном volume.
+
+`docker compose down` сохраняет named volume funeral-postgres-data.
+`docker compose down -v` удаляет volume и данные — это отдельное явное разрушительное действие.
+Для обновления backend удалять volume не требуется.
+
+## Проверка persistence и ограничения финального аудита
+
+V1 — схема КР №1; V2 — UUID/код/priority/archive/version; V3 — users/roles/refresh;
+V4 — CeremonyType code/enabled; V5 — tags и join table; V6 — notes;
+V7 — импортируемый неизменяемый requestCode с INSERT/UPDATE trigger; V8 — audit_events.
+Hibernate остаётся в режиме ddl-auto=validate. Старые миграции не изменяются.
+Long остаётся PK FuneralRequest, CeremonyType сохраняет INTEGER PK/FK КР №1,
+RequestStatus хранится через явный converter, не ordinal.
+
+UNIQUE UUID/requestCode/login обеспечены БД. Tags имеют unique lower(name), связь —
+composite PK. Notes/Audit FK, NULL constraints и индексы описаны миграциями.
+Имеются индексы client FK, tags/notes FK, UUID/requestCode/login и audit created_at/user_id.
+Для request-фильтров status/archived/createdAt дополнительных индексов пока нет:
+их полезность нужно оценить EXPLAIN на реальных данных, без индексации каждой колонки.
+
+Unit/web tests проверяют функциональные сценарии и OpenAPI/Health с реальными
+Springdoc/Security/Actuator beans, но mock repositories. Отдельный offline test
+инициализирует все JPA entities и Spring Data query methods. Это не заменяет
+PostgreSQL IT: Flyway SQL, triggers, FK, DB locking, реальные aggregate queries и
+Docker startup/health требуют запуска на PostgreSQL/Docker.

@@ -1,5 +1,7 @@
 package ru.funeralagency.controller;
 
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -38,6 +40,7 @@ public class CeremonyTypeController {
     }
 
     @PostMapping
+    @ApiResponse(responseCode = "201", description = "Запись создана")
     public ResponseEntity<CeremonyTypeResponseDto> create(@Valid @RequestBody CeremonyTypeCreateDto dto) {
         var created = service.create(dto.code(), dto.name());
         return ResponseEntity.created(URI.create("/api/ceremony-types/" + created.getId()))

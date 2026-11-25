@@ -1,5 +1,7 @@
 package ru.funeralagency.dto;
 
+import io.swagger.v3.oas.annotations.media.Schema;
+
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
 
@@ -8,14 +10,18 @@ import java.time.LocalDate;
 
 public class FuneralRequestCreateDto {
 
+    @Schema(requiredMode = Schema.RequiredMode.REQUIRED)
     private Long clientId;
+    @Schema(requiredMode = Schema.RequiredMode.REQUIRED)
     private String deceasedFullName;
+    @Schema(requiredMode = Schema.RequiredMode.REQUIRED)
     private LocalDate ceremonyDate;
 
     @NotNull(message = "Тип церемонии обязателен")
     @Positive(message = "ID типа церемонии должен быть положительным")
     private Long ceremonyTypeId;
 
+    @Schema(requiredMode = Schema.RequiredMode.REQUIRED)
     private BigDecimal price;
     private String comment;
     private boolean urgent;

@@ -1,5 +1,9 @@
 package ru.funeralagency.controller;
 
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.media.Content;
+
+import io.swagger.v3.oas.annotations.Parameter;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -35,8 +39,9 @@ public class RequestNoteController {
     }
 
     @PostMapping
+    @ApiResponse(responseCode = "201", description = "Запись создана")
     public ResponseEntity<RequestNoteResponseDto> create(@PathVariable UUID uuid,
-            @AuthenticationPrincipal AuthenticatedUser user, @Valid @RequestBody RequestNoteWriteDto dto) {
+            @Parameter(hidden = true) @AuthenticationPrincipal AuthenticatedUser user, @Valid @RequestBody RequestNoteWriteDto dto) {
         var created = service.create(uuid, user.uuid(), dto.text(), dto.pinned());
         return ResponseEntity.created(URI.create("/api/requests/" + uuid + "/notes/" + created.uuid())).body(created);
     }
@@ -48,6 +53,7 @@ public class RequestNoteController {
     }
 
     @DeleteMapping("/{noteUuid}")
+    @ApiResponse(responseCode = "204", description = "Операция выполнена", content = @Content)
     public ResponseEntity<Void> delete(@PathVariable UUID uuid, @PathVariable UUID noteUuid) {
         service.delete(uuid, noteUuid);
         return ResponseEntity.noContent().build();

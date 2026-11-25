@@ -1,5 +1,8 @@
 package ru.funeralagency.controller;
 
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.media.Content;
+
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -33,6 +36,7 @@ public class ClientController {
     }
 
     @PostMapping
+    @ApiResponse(responseCode = "201", description = "Запись создана")
     public ResponseEntity<ClientResponseDto> create(@RequestBody ClientRequestDto dto) {
         Client createdClient = clientService.create(clientMapper.toEntity(dto));
         ClientResponseDto response = clientMapper.toResponseDto(createdClient);
@@ -61,6 +65,7 @@ public class ClientController {
     }
 
     @DeleteMapping("/{id}")
+    @ApiResponse(responseCode = "204", description = "Операция выполнена", content = @Content)
     public ResponseEntity<Void> deleteById(@PathVariable Long id) {
         clientService.deleteById(id);
         return ResponseEntity.noContent().build();

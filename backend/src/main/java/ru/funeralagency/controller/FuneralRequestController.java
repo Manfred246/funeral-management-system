@@ -1,5 +1,8 @@
 package ru.funeralagency.controller;
 
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import jakarta.validation.Valid;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ContentDisposition;
@@ -56,6 +59,7 @@ public class FuneralRequestController {
     }
 
     @PostMapping
+    @ApiResponse(responseCode = "201", description = "Запись создана")
     public ResponseEntity<FuneralRequestResponseDto> create(
             @Valid @RequestBody FuneralRequestCreateDto dto
     ) {
@@ -107,12 +111,14 @@ public class FuneralRequestController {
     }
 
     @PostMapping("/{uuid}/tags/{tagId}")
+    @ApiResponse(responseCode = "204", description = "Операция выполнена", content = @Content)
     public ResponseEntity<Void> addTag(@PathVariable UUID uuid, @PathVariable Long tagId) {
         requestService.addTagByUuid(uuid, tagId);
         return ResponseEntity.noContent().build();
     }
 
     @DeleteMapping("/{uuid}/tags/{tagId}")
+    @ApiResponse(responseCode = "204", description = "Операция выполнена", content = @Content)
     public ResponseEntity<Void> removeTag(@PathVariable UUID uuid, @PathVariable Long tagId) {
         requestService.removeTagByUuid(uuid, tagId);
         return ResponseEntity.noContent().build();
@@ -129,6 +135,7 @@ public class FuneralRequestController {
     }
 
     @DeleteMapping("/{uuid}")
+    @ApiResponse(responseCode = "204", description = "Операция выполнена", content = @Content)
     public ResponseEntity<Void> archive(@PathVariable UUID uuid) {
         requestService.archiveByUuid(uuid);
         return ResponseEntity.noContent().build();
@@ -140,6 +147,7 @@ public class FuneralRequestController {
     }
 
     @DeleteMapping("/{uuid}/permanent")
+    @ApiResponse(responseCode = "204", description = "Операция выполнена", content = @Content)
     public ResponseEntity<Void> deletePermanently(@PathVariable UUID uuid) {
         requestService.deletePermanentlyByUuid(uuid);
         return ResponseEntity.noContent().build();
@@ -176,6 +184,8 @@ public class FuneralRequestController {
     }
 
     @GetMapping("/export")
+    @ApiResponse(responseCode = "200", content = @Content(mediaType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            schema = @Schema(type = "string", format = "binary")))
     public ResponseEntity<byte[]> export() {
         byte[] content = excelExporter.export(requestService.findAll());
         ContentDisposition disposition = ContentDisposition.attachment()

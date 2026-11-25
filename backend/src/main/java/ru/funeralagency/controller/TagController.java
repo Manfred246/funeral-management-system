@@ -1,5 +1,7 @@
 package ru.funeralagency.controller;
 
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -36,6 +38,7 @@ public class TagController {
     }
 
     @PostMapping
+    @ApiResponse(responseCode = "201", description = "Запись создана")
     public ResponseEntity<TagDto> create(@Valid @RequestBody TagCreateDto dto) {
         var created = service.create(dto.name());
         return ResponseEntity.created(URI.create("/api/tags/" + created.getId())).body(TagMapper.toDto(created));

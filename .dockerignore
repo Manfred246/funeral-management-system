@@ -1,4 +1,13 @@
 .git
+.env
+.env.*
+**/.env
+**/.env.*
+.codex
+.agents
+.aws
+AGENTS.md
+**/*.log
 .idea
 *.iml
 
