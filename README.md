@@ -178,9 +178,63 @@ Create не принимает version; mapper не копирует входн�
 не меняются, если состояние уже нужное. Permanent DELETE физически удаляет строку
 и возвращает 204; дальнейший GET возвращает 404.
 
-Обычный GET /api/requests возвращает только неархивированные заявки; текущий XLSX
-export использует этот же список. Существующие search/filter/sort и статистика
-до ЭТАПА 4 сохраняют прежнее поведение и учитывают также архивные записи.
+GET /api/requests возвращает страницу заявок, по умолчанию только активные.
+XLSX export по-прежнему выгружает весь активный список без пагинации.
+Legacy search/filter/sort также исключают архивные заявки. Статистика сохраняет
+прежнее поведение и учитывает все записи.
+
+#### Поиск, фильтры и пагинация
+
+Основной endpoint списка — `GET /api/requests`:
+
+| Параметр | Значение |
+|---|---|
+| `q` | Подстрока ФИО умершего, requestCode или имени клиента, без учёта регистра |
+| `client` | Существующий Long ID клиента |
+| `ceremonyType` | `BURIAL` или `CREMATION` |
+| `status` | Значение RequestStatus |
+| `urgent` | `true`/`false`; отсутствие не фильтрует |
+| `priority` | Сохранённое неотрицательное значение priority |
+| `archived` | По умолчанию `false`; `true` возвращает только архивные |
+| `minPrice`, `maxPrice` | Включительные границы стоимости, неотрицательные; min <= max |
+| `page` | Номер страницы с 0, по умолчанию 0 |
+| `size` | От 1 до 100, по умолчанию 20; превышение максимума возвращает 400 |
+| `sort` | Одно поле и направление, по умолчанию `createdAt,desc` |
+
+Разрешены sort fields: `createdAt`, `ceremonyDate`, `price`, `priority`, `requestCode`.
+Направление — `asc` или `desc`. При равных значениях добавляется сортировка по
+внутреннему ID для устойчивого порядка страниц. Остальные поля/направления запрещены.
+Фильтры объединяются через AND; внутри q три текстовых поля объединены через OR.
+Пустой q не фильтрует. `%`, `_` и `!` в поиске означают буквальные символы.
+Некорректные числа, enum, границы, номер/размер страницы и sort возвращают 400.
+
+Примеры:
+
+```text
+GET /api/requests?q=Иванов&client=1&status=NEW&page=0&size=20&sort=price,asc
+GET /api/requests?urgent=true&priority=4&minPrice=10000&maxPrice=50000
+GET /api/requests?archived=true&sort=createdAt,desc
+```
+
+Ответ имеет стабильный DTO-контракт, например для пустого результата:
+
+```json
+{
+  "content": [],
+  "page": 0,
+  "size": 20,
+  "totalElements": 0,
+  "totalPages": 0
+}
+```
+
+`content` содержит обычные FuneralRequestResponseDto. Фильтрация, сортировка,
+подсчёт и пагинация выполняются в БД через Specifications и Pageable.
+JavaFX/console-client пока не адаптированы к page-ответу основного списка.
+Legacy `/search`, `/filter`, `/sort` сохраняют прежние параметры и ответ-массив,
+используя те же Specifications. Legacy deceasedName ищет только по ФИО умершего;
+legacy filter сохраняет dateFrom/dateTo. Новым клиентам следует использовать
+основной GET /api/requests.
 
 Для новой заявки `uuid` создаётся через `UUID.randomUUID()`.
 Код имеет формат `FR-{год createdAt}-{id, минимум 6 цифр}`, например `FR-2026-000015`.
@@ -208,12 +262,12 @@ DEFAULT новых колонок и вычисляемый код позвол�
 
 | Операция | Пример |
 |---|---|
-| Поиск по ФИО | `/api/requests/search?deceasedName=Иванов` |
-| Поиск по клиенту | `/api/requests/search?clientId=2` |
-| Фильтрация | `/api/requests/filter?status=NEW&ceremonyType=BURIAL` |
-| Фильтрация по датам | `/api/requests/filter?dateFrom=2026-10-01&dateTo=2026-10-31` |
-| Сортировка по цене | `/api/requests/sort?field=price&ascending=false` |
-| Сортировка по дате | `/api/requests/sort?field=ceremonyDate&ascending=true` |
+| Legacy: поиск по ФИО | `/api/requests/search?deceasedName=Иванов` |
+| Legacy: поиск по клиенту | `/api/requests/search?clientId=2` |
+| Legacy: фильтрация | `/api/requests/filter?status=NEW&ceremonyType=BURIAL` |
+| Legacy: фильтрация по датам | `/api/requests/filter?dateFrom=2026-10-01&dateTo=2026-10-31` |
+| Legacy: сортировка по цене | `/api/requests/sort?field=price&ascending=false` |
+| Legacy: сортировка по дате | `/api/requests/sort?field=ceremonyDate&ascending=true` |
 | Статистика | `/api/statistics` |
 | Экспорт XLSX | `/api/requests/export` |
 

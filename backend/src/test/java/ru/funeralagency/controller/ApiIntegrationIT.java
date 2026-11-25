@@ -245,7 +245,7 @@ class ApiIntegrationIT {
                 .andExpect(jsonPath("$[0].clientId").value(2))
                 .andExpect(jsonPath("$[1].clientId").value(2));
         mockMvc.perform(get("/api/requests/search").param("deceasedName", "иВаНо"))
-                .andExpect(status().isOk()).andExpect(jsonPath("$.length()").value(3));
+                .andExpect(status().isOk()).andExpect(jsonPath("$.length()").value(2));
         mockMvc.perform(get("/api/requests/search").param("clientId", "999999"))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.length()").value(0));
         mockMvc.perform(get("/api/requests/search"))
@@ -311,7 +311,7 @@ class ApiIntegrationIT {
                 .andReturn().getResponse().getContentAsString());
         assertTrue(java.time.LocalDateTime.parse(archived.get("updatedAt").asText())
                 .isAfter(java.time.LocalDateTime.parse(created.get("updatedAt").asText())));
-        mockMvc.perform(get("/api/requests")).andExpect(jsonPath("$.length()").value(12));
+        mockMvc.perform(get("/api/requests")).andExpect(jsonPath("$.totalElements").value(12));
         mockMvc.perform(delete(url)).andExpect(status().isNoContent());
         mockMvc.perform(get(url)).andExpect(jsonPath("$.version").value(2))
                 .andExpect(jsonPath("$.updatedAt").value(archived.get("updatedAt").asText()));
@@ -327,7 +327,7 @@ class ApiIntegrationIT {
                 .isAfter(java.time.LocalDateTime.parse(archived.get("updatedAt").asText())));
         mockMvc.perform(post(url + "/restore")).andExpect(jsonPath("$.version").value(3))
                 .andExpect(jsonPath("$.updatedAt").value(restored.get("updatedAt").asText()));
-        mockMvc.perform(get("/api/requests")).andExpect(jsonPath("$.length()").value(13));
+        mockMvc.perform(get("/api/requests")).andExpect(jsonPath("$.totalElements").value(13));
 
         mockMvc.perform(delete(url + "/permanent")).andExpect(status().isNoContent());
         assertTrue(requests.findByUuid(UUID.fromString(uuid)).isEmpty());
@@ -344,7 +344,7 @@ class ApiIntegrationIT {
         mockMvc.perform(post("/api/requests").contentType(MediaType.APPLICATION_JSON)
                         .content(requestBody(999999, "100.00", null)))
                 .andExpect(status().isBadRequest());
-        mockMvc.perform(get("/api/requests")).andExpect(jsonPath("$.length()").value(12));
+        mockMvc.perform(get("/api/requests")).andExpect(jsonPath("$.totalElements").value(12));
     }
 
     @Test

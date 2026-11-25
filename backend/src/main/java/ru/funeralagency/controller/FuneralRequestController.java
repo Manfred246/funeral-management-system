@@ -18,6 +18,8 @@ import org.springframework.web.bind.annotation.RestController;
 import ru.funeralagency.dto.FuneralRequestCreateDto;
 import ru.funeralagency.dto.FuneralRequestResponseDto;
 import ru.funeralagency.dto.FuneralRequestUpdateDto;
+import ru.funeralagency.dto.FuneralRequestFilterDto;
+import ru.funeralagency.dto.FuneralRequestPageDto;
 import ru.funeralagency.mapper.FuneralRequestMapper;
 import ru.funeralagency.model.CeremonyType;
 import ru.funeralagency.model.FuneralRequest;
@@ -26,6 +28,7 @@ import ru.funeralagency.service.ExcelExporter;
 import ru.funeralagency.service.FuneralRequestService;
 
 import java.net.URI;
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
@@ -63,8 +66,31 @@ public class FuneralRequestController {
     }
 
     @GetMapping
-    public List<FuneralRequestResponseDto> findAll() {
-        return requestMapper.toResponseDtoList(requestService.findAll());
+    public FuneralRequestPageDto findAll(
+            @RequestParam(required = false) String q,
+            @RequestParam(required = false) Long client,
+            @RequestParam(required = false) CeremonyType ceremonyType,
+            @RequestParam(required = false) RequestStatus status,
+            @RequestParam(required = false) Boolean urgent,
+            @RequestParam(required = false) Integer priority,
+            @RequestParam(defaultValue = "false") boolean archived,
+            @RequestParam(required = false) BigDecimal minPrice,
+            @RequestParam(required = false) BigDecimal maxPrice,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(defaultValue = "createdAt,desc") String sort
+    ) {
+        FuneralRequestFilterDto filter = new FuneralRequestFilterDto();
+        filter.setQ(q);
+        filter.setClient(client);
+        filter.setCeremonyType(ceremonyType);
+        filter.setStatus(status);
+        filter.setUrgent(urgent);
+        filter.setPriority(priority);
+        filter.setArchived(archived);
+        filter.setMinPrice(minPrice);
+        filter.setMaxPrice(maxPrice);
+        return requestService.findPage(filter, page, size, sort);
     }
 
     @GetMapping("/{uuid}")

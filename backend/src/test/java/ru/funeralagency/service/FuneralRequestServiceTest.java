@@ -9,6 +9,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.data.domain.Sort;
+import org.springframework.data.jpa.domain.Specification;
 import ru.funeralagency.exception.BusinessException;
 import ru.funeralagency.exception.EntityNotFoundException;
 import ru.funeralagency.exception.ValidationException;
@@ -35,6 +36,7 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -54,7 +56,7 @@ class FuneralRequestServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new FuneralRequestService(requestRepository, clientRepository);
+        service = new FuneralRequestService(requestRepository, clientRepository, new ru.funeralagency.mapper.FuneralRequestMapper());
     }
 
     @Test
@@ -133,27 +135,18 @@ class FuneralRequestServiceTest {
     }
 
     @Test
-    void searchesFiltersAndSortsRequests() {
-        FuneralRequest first = validRequest(1L, RequestStatus.NEW);
-        first.setDeceasedFullName("Петров Пётр");
-        first.setPrice(new BigDecimal("200.00"));
-        FuneralRequest second = validRequest(2L, RequestStatus.CONFIRMED);
-        second.setDeceasedFullName("Иванов Иван");
-        second.setCeremonyType(CeremonyType.CREMATION);
-        second.setPrice(new BigDecimal("100.00"));
-        when(requestRepository.findByDeceasedFullNameContainingIgnoreCaseOrderByIdAsc("иванов")).thenReturn(List.of(second));
-        when(requestRepository.findByClientIdOrderByIdAsc(1L)).thenReturn(List.of(first, second));
-        when(requestRepository.findFiltered(RequestStatus.CONFIRMED, CeremonyType.CREMATION, null, null))
-                .thenReturn(List.of(second));
-        when(requestRepository.findAll(Sort.by(Sort.Direction.ASC, "price").and(Sort.by("id")))).thenReturn(List.of(second, first));
+    void legacyQueriesDelegateToSpecificationsAndPreserveListResponses() {
+        FuneralRequest request = validRequest(1L, RequestStatus.NEW);
+        when(requestRepository.findAll(any(Specification.class), eq(Sort.by("id"))))
+                .thenReturn(List.of(request));
+        Sort priceSort = Sort.by(Sort.Direction.ASC, "price").and(Sort.by("id"));
+        when(requestRepository.findAll(any(Specification.class), eq(priceSort)))
+                .thenReturn(List.of(request));
 
-        assertEquals(List.of(second), service.search("иванов", null));
-        assertEquals(List.of(first, second), service.search(null, 1L));
-        assertEquals(
-                List.of(second),
-                service.filter(RequestStatus.CONFIRMED, CeremonyType.CREMATION, null, null)
-        );
-        assertEquals(List.of(second, first), service.sort("price", true));
+        assertEquals(List.of(request), service.search("иванов", null));
+        assertEquals(List.of(request), service.search(null, 1L));
+        assertEquals(List.of(request), service.filter(RequestStatus.NEW, CeremonyType.BURIAL, null, null));
+        assertEquals(List.of(request), service.sort("price", true));
         verify(requestRepository, never()).findAll();
     }
 
@@ -279,7 +272,7 @@ class FuneralRequestServiceTest {
         assertEquals(createdAt, existing.getCreatedAt());
         assertEquals(0L, existing.getVersion()); // Mock не исполняет Hibernate @Version.
         verify(requestRepository).saveAndFlush(existing);
-        verify(requestRepository, never()).delete(any());
+        verify(requestRepository, never()).delete(any(FuneralRequest.class));
     }
 
     @Test
@@ -304,7 +297,7 @@ class FuneralRequestServiceTest {
         assertEquals(createdAt, existing.getCreatedAt());
         assertEquals(0L, existing.getVersion());
         verify(requestRepository).saveAndFlush(existing);
-        verify(requestRepository, never()).delete(any());
+        verify(requestRepository, never()).delete(any(FuneralRequest.class));
     }
 
     @Test
@@ -322,7 +315,7 @@ class FuneralRequestServiceTest {
     @Test
     void defaultListQueriesOnlyActiveRequests() {
         FuneralRequest active = validRequest(5L, RequestStatus.NEW);
-        when(requestRepository.findByArchivedFalseOrderByIdAsc()).thenReturn(List.of(active));
+        when(requestRepository.findAll(any(Specification.class), eq(Sort.by("id")))).thenReturn(List.of(active));
         assertEquals(List.of(active), service.findAll());
         verify(requestRepository, never()).findAllByOrderByIdAsc();
     }

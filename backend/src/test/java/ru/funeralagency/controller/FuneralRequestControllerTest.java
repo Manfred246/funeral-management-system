@@ -10,6 +10,9 @@ import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.dao.OptimisticLockingFailureException;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.http.MediaType;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.test.web.servlet.MockMvc;
@@ -28,6 +31,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.Optional;
+import java.util.List;
 import java.util.UUID;
 import java.util.stream.Stream;
 
@@ -60,7 +64,7 @@ class FuneralRequestControllerTest {
 
     @BeforeEach
     void setUp() {
-        FuneralRequestService service = new FuneralRequestService(requests, clients);
+        FuneralRequestService service = new FuneralRequestService(requests, clients, new FuneralRequestMapper());
         mvc = MockMvcBuilders.standaloneSetup(
                         new FuneralRequestController(service, new FuneralRequestMapper(), exporter))
                 .setControllerAdvice(new ApiExceptionHandler()).build();
@@ -72,6 +76,48 @@ class FuneralRequestControllerTest {
         stored.setVersion(3L);
         stored.setUpdatedAt(stored.getCreatedAt());
         stored.setPriority(0);
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void serializesPageAndAcceptsCombinedQueryParameters() throws Exception {
+        when(requests.findAll(any(Specification.class), any(Pageable.class)))
+                .thenAnswer(invocation -> new PageImpl<>(List.of(stored), invocation.getArgument(1), 3));
+        mvc.perform(get("/api/requests")
+                        .param("q", "FR-2026").param("client", "1")
+                        .param("ceremonyType", "BURIAL").param("status", "NEW")
+                        .param("urgent", "false").param("priority", "0").param("archived", "false")
+                        .param("minPrice", "100").param("maxPrice", "200")
+                        .param("page", "1").param("size", "2").param("sort", "price,asc"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content[0].uuid").value(UUID_VALUE.toString()))
+                .andExpect(jsonPath("$.page").value(1))
+                .andExpect(jsonPath("$.size").value(2))
+                .andExpect(jsonPath("$.totalElements").value(3))
+                .andExpect(jsonPath("$.totalPages").value(2));
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void defaultPageStartsAtZeroWithSize20() throws Exception {
+        when(requests.findAll(any(Specification.class), any(Pageable.class)))
+                .thenAnswer(invocation -> new PageImpl<>(List.of(), invocation.getArgument(1), 0));
+        mvc.perform(get("/api/requests"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.content").isEmpty())
+                .andExpect(jsonPath("$.page").value(0)).andExpect(jsonPath("$.size").value(20))
+                .andExpect(jsonPath("$.totalElements").value(0)).andExpect(jsonPath("$.totalPages").value(0));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"page=-1", "size=0", "size=-1", "size=101", "page=abc", "size=abc",
+            "minPrice=-1", "maxPrice=-1", "minPrice=20&maxPrice=10", "minPrice=abc",
+            "sort=id,asc", "sort=price,up", "sort=price", "status=BAD", "ceremonyType=BAD",
+            "urgent=BAD", "archived=BAD", "priority=-1", "priority=abc", "client=0"})
+    void invalidQueryParametersReturn400WithoutQueryingDatabase(String query) throws Exception {
+        mvc.perform(get("/api/requests?" + query))
+                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.status").value(400))
+                .andExpect(jsonPath("$.trace").doesNotExist());
+        verifyNoInteractions(requests, clients);
     }
 
     @Test
@@ -190,7 +236,7 @@ class FuneralRequestControllerTest {
         mvc.perform(get("/api/requests/{uuid}", UUID_VALUE))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.archived").value(true));
         verify(requests).saveAndFlush(stored);
-        verify(requests, never()).delete(any());
+        verify(requests, never()).delete(any(FuneralRequest.class));
     }
 
     @Test

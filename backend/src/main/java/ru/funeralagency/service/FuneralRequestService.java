@@ -1,37 +1,54 @@
 package ru.funeralagency.service;
 
 import org.springframework.dao.OptimisticLockingFailureException;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import ru.funeralagency.exception.EntityNotFoundException;
 import ru.funeralagency.exception.ValidationException;
+import ru.funeralagency.dto.FuneralRequestFilterDto;
+import ru.funeralagency.dto.FuneralRequestPageDto;
+import ru.funeralagency.mapper.FuneralRequestMapper;
 import ru.funeralagency.model.CeremonyType;
 import ru.funeralagency.model.Client;
 import ru.funeralagency.model.FuneralRequest;
 import ru.funeralagency.model.RequestStatus;
 import ru.funeralagency.repository.ClientRepository;
 import ru.funeralagency.repository.FuneralRequestRepository;
+import ru.funeralagency.repository.FuneralRequestSpecifications;
 import ru.funeralagency.validation.FuneralRequestValidationRules;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 @Service
 public class FuneralRequestService {
 
+    private static final int MAX_PAGE_SIZE = 100;
+    private static final Set<String> SORT_FIELDS = Set.of(
+            "createdAt", "ceremonyDate", "price", "priority", "requestCode");
+
     private final FuneralRequestRepository requestRepository;
     private final ClientRepository clientRepository;
+    private final FuneralRequestMapper requestMapper;
 
     public FuneralRequestService(
             FuneralRequestRepository requestRepository,
-            ClientRepository clientRepository
+            ClientRepository clientRepository,
+            FuneralRequestMapper requestMapper
     ) {
         this.requestRepository = requestRepository;
         this.clientRepository = clientRepository;
+        this.requestMapper = requestMapper;
     }
 
     @Transactional
@@ -57,7 +74,26 @@ public class FuneralRequestService {
     }
 
     public List<FuneralRequest> findAll() {
-        return requestRepository.findByArchivedFalseOrderByIdAsc();
+        return requestRepository.findAll(
+                FuneralRequestSpecifications.matching(new FuneralRequestFilterDto()), Sort.by("id"));
+    }
+
+    @Transactional(readOnly = true)
+    public FuneralRequestPageDto findPage(FuneralRequestFilterDto filter, int page, int size, String sort) {
+        validateFilters(filter);
+        if (page < 0) {
+            throw new ValidationException("Номер страницы не может быть отрицательным");
+        }
+        if (size < 1 || size > MAX_PAGE_SIZE) {
+            throw new ValidationException("Размер страницы должен быть от 1 до " + MAX_PAGE_SIZE);
+        }
+        if ((long) page * size > Integer.MAX_VALUE) {
+            throw new ValidationException("Номер страницы слишком велик");
+        }
+        Pageable pageable = PageRequest.of(page, size, parseSort(sort));
+        Page<FuneralRequest> result = requestRepository.findAll(FuneralRequestSpecifications.matching(filter), pageable);
+        return new FuneralRequestPageDto(requestMapper.toResponseDtoList(result.getContent()),
+                result.getNumber(), result.getSize(), result.getTotalElements(), result.getTotalPages());
     }
 
     public FuneralRequest getByUuid(UUID uuid) {
@@ -147,16 +183,17 @@ public class FuneralRequestService {
         if ((deceasedName == null && clientId == null) || (deceasedName != null && clientId != null)) {
             throw new ValidationException("Укажите один параметр поиска: deceasedName или clientId");
         }
-        if (clientId != null) {
-            if (clientId <= 0) {
-                throw new ValidationException("ID клиента должен быть положительным числом");
-            }
-            return requestRepository.findByClientIdOrderByIdAsc(clientId);
-        }
-        if (deceasedName.isBlank()) {
+        if (deceasedName != null && deceasedName.isBlank()) {
             throw new ValidationException("ФИО для поиска не может быть пустым");
         }
-        return requestRepository.findByDeceasedFullNameContainingIgnoreCaseOrderByIdAsc(deceasedName.trim());
+        FuneralRequestFilterDto filter = new FuneralRequestFilterDto();
+        filter.setClient(clientId);
+        validateFilters(filter);
+        Specification<FuneralRequest> spec = FuneralRequestSpecifications.matching(filter);
+        if (deceasedName != null) {
+            spec = spec.and(FuneralRequestSpecifications.deceasedNameContains(deceasedName));
+        }
+        return requestRepository.findAll(spec, Sort.by("id"));
     }
 
     public List<FuneralRequest> filter(
@@ -168,15 +205,48 @@ public class FuneralRequestService {
         if (dateFrom != null && dateTo != null && dateFrom.isAfter(dateTo)) {
             throw new ValidationException("Начальная дата не может быть позже конечной");
         }
-        return requestRepository.findFiltered(status, ceremonyType, dateFrom, dateTo);
+        FuneralRequestFilterDto filter = new FuneralRequestFilterDto();
+        filter.setStatus(status);
+        filter.setCeremonyType(ceremonyType);
+        Specification<FuneralRequest> spec = FuneralRequestSpecifications.matching(filter)
+                .and(FuneralRequestSpecifications.ceremonyDateBetween(dateFrom, dateTo));
+        return requestRepository.findAll(spec, Sort.by("id"));
     }
 
     public List<FuneralRequest> sort(String field, boolean ascending) {
-        if (!"ceremonyDate".equals(field) && !"price".equals(field)) {
-            throw new ValidationException("Сортировать можно по ceremonyDate или price");
+        return requestRepository.findAll(FuneralRequestSpecifications.matching(new FuneralRequestFilterDto()),
+                parseSort(field + (ascending ? ",asc" : ",desc")));
+    }
+
+    private void validateFilters(FuneralRequestFilterDto filter) {
+        if (filter.getClient() != null && filter.getClient() <= 0) {
+            throw new ValidationException("ID клиента должен быть положительным числом");
         }
-        Sort.Direction direction = ascending ? Sort.Direction.ASC : Sort.Direction.DESC;
-        return requestRepository.findAll(Sort.by(direction, field).and(Sort.by("id")));
+        if (filter.getPriority() != null && filter.getPriority() < 0) {
+            throw new ValidationException("Priority не может быть отрицательным");
+        }
+        BigDecimal min = filter.getMinPrice();
+        BigDecimal max = filter.getMaxPrice();
+        if ((min != null && min.signum() < 0) || (max != null && max.signum() < 0)) {
+            throw new ValidationException("Границы стоимости не могут быть отрицательными");
+        }
+        if (min != null && max != null && min.compareTo(max) > 0) {
+            throw new ValidationException("minPrice не может превышать maxPrice");
+        }
+    }
+
+    private Sort parseSort(String sort) {
+        String value = sort == null ? "createdAt,desc" : sort;
+        String[] parts = value.split(",", -1);
+        if (parts.length != 2 || !SORT_FIELDS.contains(parts[0].trim())) {
+            throw new ValidationException("Допустимые поля sort: createdAt, ceremonyDate, price, priority, requestCode");
+        }
+        String direction = parts[1].trim();
+        if (!"asc".equalsIgnoreCase(direction) && !"desc".equalsIgnoreCase(direction)) {
+            throw new ValidationException("Направление sort должно быть asc или desc");
+        }
+        // Внутренний ID задаёт устойчивый порядок при одинаковых значениях основного поля.
+        return Sort.by(Sort.Direction.fromString(direction), parts[0].trim()).and(Sort.by("id"));
     }
 
     private void normalizeAndValidate(FuneralRequest request) {

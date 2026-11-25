@@ -10,6 +10,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInstance;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.WebApplicationType;
 import org.springframework.context.ConfigurableApplicationContext;
@@ -19,6 +21,8 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Sort;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import ru.funeralagency.Main;
+import ru.funeralagency.service.FuneralRequestService;
+import ru.funeralagency.dto.FuneralRequestFilterDto;
 import ru.funeralagency.model.CeremonyType;
 import ru.funeralagency.model.Client;
 import ru.funeralagency.model.FuneralRequest;
@@ -37,6 +41,8 @@ import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.function.Consumer;
+import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -47,6 +53,7 @@ class JpaRepositoriesIT {
     private ConfigurableApplicationContext context;
     private ClientRepository clients;
     private FuneralRequestRepository requests;
+    private FuneralRequestService requestService;
     private String schema;
     private boolean schemaCreated;
 
@@ -81,6 +88,7 @@ class JpaRepositoriesIT {
         context = application.run();
         clients = context.getBean(ClientRepository.class);
         requests = context.getBean(FuneralRequestRepository.class);
+        requestService = context.getBean(FuneralRequestService.class);
         assertEquals("validate", context.getEnvironment().getProperty("spring.jpa.hibernate.ddl-auto"));
         assertEquals(0, clients.count());
         assertEquals(0, requests.count());
@@ -268,35 +276,35 @@ class JpaRepositoriesIT {
 
     @Test
     void partialNameSearchIsCaseInsensitiveAndEscapesWildcards() {
-        assertEquals(3, requests.findByDeceasedFullNameContainingIgnoreCaseOrderByIdAsc("иВаНо").size());
+        assertEquals(2, requestService.search("иВаНо", null).size());
         FuneralRequest request = newRequest();
         request.setDeceasedFullName("O'Brien 50%_!");
         requests.saveAndFlush(request);
-        assertEquals(1, requests.findByDeceasedFullNameContainingIgnoreCaseOrderByIdAsc("50%_!").size());
-        assertEquals(1, requests.findByDeceasedFullNameContainingIgnoreCaseOrderByIdAsc("%").size());
-        assertEquals(1, requests.findByDeceasedFullNameContainingIgnoreCaseOrderByIdAsc("_").size());
-        assertEquals(1, requests.findByDeceasedFullNameContainingIgnoreCaseOrderByIdAsc("!").size());
-        assertEquals(1, requests.findByDeceasedFullNameContainingIgnoreCaseOrderByIdAsc("O'Brien").size());
-        assertTrue(requests.findByDeceasedFullNameContainingIgnoreCaseOrderByIdAsc("' OR 1=1 --").isEmpty());
+        assertEquals(1, requestService.search("50%_!", null).size());
+        assertEquals(1, requestService.search("%", null).size());
+        assertEquals(1, requestService.search("_", null).size());
+        assertEquals(1, requestService.search("!", null).size());
+        assertEquals(1, requestService.search("O'Brien", null).size());
+        assertTrue(requestService.search("' OR 1=1 --", null).isEmpty());
     }
 
     @Test
     void filtersCombineEnumsDatesAndClient() {
-        assertEquals(12, requests.findFiltered(null, null, null, null).size());
-        assertEquals(2, requests.findByClientIdOrderByIdAsc(2).size());
-        assertEquals(1, requests.findFiltered(RequestStatus.NEW, CeremonyType.BURIAL,
+        assertEquals(12, requestService.filter(null, null, null, null).size());
+        assertEquals(2, requestService.search(null, 2L).size());
+        assertEquals(1, requestService.filter(RequestStatus.NEW, CeremonyType.BURIAL,
                 LocalDate.now(), LocalDate.now().plusDays(8)).size());
-        assertEquals(3, requests.findFiltered(RequestStatus.NEW, null, null, null).size());
-        assertEquals(6, requests.findFiltered(null, CeremonyType.CREMATION, null, null).size());
-        assertTrue(requests.findFiltered(null, null, LocalDate.now().plusYears(1), null).isEmpty());
-        assertTrue(requests.findFiltered(null, null, null, LocalDate.now().minusYears(1)).isEmpty());
+        assertEquals(3, requestService.filter(RequestStatus.NEW, null, null, null).size());
+        assertEquals(6, requestService.filter(null, CeremonyType.CREMATION, null, null).size());
+        assertTrue(requestService.filter(null, null, LocalDate.now().plusYears(1), null).isEmpty());
+        assertTrue(requestService.filter(null, null, null, LocalDate.now().minusYears(1)).isEmpty());
     }
 
     @Test
     void priceAndDateSortingWorkInBothDirections() {
         for (Sort.Direction direction : Sort.Direction.values()) {
-            List<FuneralRequest> prices = requests.findAll(Sort.by(direction, "price").and(Sort.by("id")));
-            List<FuneralRequest> dates = requests.findAll(Sort.by(direction, "ceremonyDate").and(Sort.by("id")));
+            List<FuneralRequest> prices = requestService.sort("price", direction == Sort.Direction.ASC);
+            List<FuneralRequest> dates = requestService.sort("ceremonyDate", direction == Sort.Direction.ASC);
             assertEquals(12, prices.size());
             assertEquals(12, dates.size());
             for (int i = 1; i < prices.size(); i++) {
@@ -306,6 +314,127 @@ class JpaRepositoriesIT {
                 assertTrue(direction.isAscending() ? dateOrder <= 0 : dateOrder >= 0);
             }
         }
+    }
+
+    @Test
+    void combinedPagedSpecificationAndExactRequestCodeWorkInPostgres() throws Exception {
+        FuneralRequest first = queryFixtures().get(0);
+        FuneralRequestFilterDto filter = new FuneralRequestFilterDto();
+        filter.setQ(first.getRequestCode().toLowerCase(java.util.Locale.ROOT));
+        filter.setClient(1L);
+        filter.setCeremonyType(CeremonyType.BURIAL);
+        filter.setStatus(RequestStatus.NEW);
+        filter.setUrgent(true);
+        filter.setPriority(4);
+        filter.setMinPrice(new BigDecimal("100.00"));
+        filter.setMaxPrice(new BigDecimal("100.00"));
+
+        var result = requestService.findPage(filter, 0, 20, "price,asc");
+        assertEquals(1, result.totalElements());
+        assertEquals(first.getUuid(), result.content().get(0).getUuid());
+        assertEquals(4, result.content().get(0).getPriority());
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("pageFilterCases")
+    void pageFiltersExecuteInPostgres(String name, Consumer<FuneralRequestFilterDto> configure, long count)
+            throws Exception {
+        queryFixtures();
+        FuneralRequestFilterDto filter = new FuneralRequestFilterDto();
+        configure.accept(filter);
+        assertEquals(count, requestService.findPage(filter, 0, 20, "price,asc").totalElements());
+    }
+
+    static Stream<Arguments> pageFilterCases() {
+        return Stream.of(
+                filterCase("default active", f -> {}, 2),
+                filterCase("archived", f -> f.setArchived(true), 1),
+                filterCase("deceased name", f -> f.setQ("иВаНоВ"), 1),
+                filterCase("request code", f -> f.setQ("fr-2026"), 2),
+                filterCase("client name", f -> f.setQ("мария"), 1),
+                filterCase("literal wildcards", f -> f.setQ("50%_!"), 1),
+                filterCase("literal percent", f -> f.setQ("%"), 1),
+                filterCase("literal underscore", f -> f.setQ("_"), 1),
+                filterCase("literal escape", f -> f.setQ("!"), 1),
+                filterCase("apostrophe", f -> f.setQ("O'Brien"), 1),
+                filterCase("SQL text is data", f -> f.setQ("' OR 1=1 --"), 0),
+                filterCase("blank q", f -> f.setQ("   "), 2),
+                filterCase("client", f -> f.setClient(2L), 1),
+                filterCase("ceremonyType", f -> f.setCeremonyType(CeremonyType.CREMATION), 1),
+                filterCase("status", f -> f.setStatus(RequestStatus.CONFIRMED), 1),
+                filterCase("urgent true", f -> f.setUrgent(true), 1),
+                filterCase("urgent false", f -> f.setUrgent(false), 1),
+                filterCase("priority", f -> f.setPriority(4), 1),
+                filterCase("min inclusive", f -> f.setMinPrice(new BigDecimal("100")), 2),
+                filterCase("max inclusive", f -> f.setMaxPrice(new BigDecimal("100")), 1),
+                filterCase("price range", f -> {
+                    f.setMinPrice(new BigDecimal("100"));
+                    f.setMaxPrice(new BigDecimal("200"));
+                }, 2));
+    }
+
+    private static Arguments filterCase(String name, Consumer<FuneralRequestFilterDto> configure, long count) {
+        return Arguments.of(name, configure, count);
+    }
+
+    @Test
+    void paginationAndBothSortDirectionsUseOnlyActiveRows() throws Exception {
+        List<FuneralRequest> records = queryFixtures();
+        FuneralRequestFilterDto filter = new FuneralRequestFilterDto();
+        var ascending = requestService.findPage(filter, 0, 1, "price,asc");
+        var descending = requestService.findPage(filter, 0, 1, "price,desc");
+        assertEquals(records.get(0).getUuid(), ascending.content().get(0).getUuid());
+        assertEquals(records.get(1).getUuid(), descending.content().get(0).getUuid());
+        assertEquals(2, ascending.totalElements());
+        assertEquals(2, ascending.totalPages());
+        assertEquals(records.get(1).getUuid(), requestService.findPage(filter, 1, 1, "price,asc")
+                .content().get(0).getUuid());
+        assertTrue(requestService.findPage(filter, 2, 1, "price,asc").content().isEmpty());
+
+        // Одинаковый createdAt у двух строк: дополнительный ID фиксирует порядок страниц.
+        assertEquals(records.get(0).getUuid(), requestService.findPage(filter, 0, 1, "createdAt,desc")
+                .content().get(0).getUuid());
+        assertEquals(records.get(1).getUuid(), requestService.findPage(filter, 1, 1, "createdAt,desc")
+                .content().get(0).getUuid());
+    }
+
+    @Test
+    void legacyWrappersAlsoExcludeArchivedRows() throws Exception {
+        queryFixtures();
+        assertEquals(1, requestService.search(null, 1L).size());
+        assertTrue(requestService.search("Архивный", null).isEmpty());
+        assertEquals(2, requestService.filter(null, null, null, null).size());
+        assertEquals(2, requestService.sort("price", true).size());
+        assertEquals(3, requests.findAllByOrderByIdAsc().size());
+    }
+
+    private List<FuneralRequest> queryFixtures() throws Exception {
+        try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
+            statement.execute("DELETE FROM funeral_requests");
+        }
+        LocalDateTime createdAt = LocalDateTime.of(2026, 1, 1, 12, 0);
+        FuneralRequest first = newRequest();
+        first.setDeceasedFullName("Иванов 50%_! O'Brien");
+        first.setCreatedAt(createdAt);
+        first.setUpdatedAt(createdAt);
+        first.setCeremonyDate(createdAt.toLocalDate().plusDays(2));
+        first.setPrice(new BigDecimal("100.00"));
+        first.setUrgent(true);
+        first.setPriority(4);
+        FuneralRequest second = newRequest();
+        second.setDeceasedFullName("Петров");
+        second.setClient(clients.findById(2L).orElseThrow());
+        second.setCreatedAt(createdAt);
+        second.setUpdatedAt(createdAt);
+        second.setCeremonyDate(createdAt.toLocalDate().plusDays(4));
+        second.setCeremonyType(CeremonyType.CREMATION);
+        second.setStatus(RequestStatus.CONFIRMED);
+        second.setPrice(new BigDecimal("200.00"));
+        FuneralRequest archived = newRequest();
+        archived.setDeceasedFullName("Архивный");
+        archived.setPrice(new BigDecimal("300.00"));
+        archived.setArchived(true);
+        return requests.saveAllAndFlush(List.of(first, second, archived));
     }
 
     @Test
