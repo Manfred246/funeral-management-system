@@ -215,6 +215,17 @@ public class FuneralRequestService {
     }
 
     @Transactional
+    public void changeStatusByUuid(UUID uuid, RequestStatus status) {
+        FuneralRequest request = getByUuid(uuid);
+        FuneralRequestValidationRules.validateStatusTransition(request.getStatus(), status);
+        if (request.getStatus() != status) {
+            request.setStatus(status);
+            request.setUpdatedAt(LocalDateTime.now().truncatedTo(ChronoUnit.MICROS));
+            requestRepository.saveAndFlush(request);
+        }
+    }
+
+    @Transactional
     public void archiveByUuid(UUID uuid) {
         FuneralRequest request = getByUuid(uuid);
         if (!request.isArchived()) {

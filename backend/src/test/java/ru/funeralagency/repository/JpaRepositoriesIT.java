@@ -24,6 +24,9 @@ import ru.funeralagency.service.FuneralRequestService;
 import ru.funeralagency.service.AuthService;
 import ru.funeralagency.service.TagService;
 import ru.funeralagency.service.RequestNoteService;
+import ru.funeralagency.service.FuneralRequestBulkService;
+import ru.funeralagency.dto.BulkOperation;
+import ru.funeralagency.dto.FuneralRequestBulkDto;
 import ru.funeralagency.model.User;
 import ru.funeralagency.exception.EntityNotFoundException;
 import ru.funeralagency.model.Tag;
@@ -489,6 +492,88 @@ class JpaRepositoriesIT {
         archived.setPrice(new BigDecimal("300.00"));
         archived.setArchived(true);
         return requests.saveAllAndFlush(List.of(first, second, archived));
+    }
+
+    @Test
+    void bulkOperationsUseExistingTransactionsVersionAndTagRules() {
+        FuneralRequestBulkService bulk = context.getBean(FuneralRequestBulkService.class);
+        Tag tag = context.getBean(TagService.class).create("VIP");
+        List<FuneralRequest> records = requests.saveAllAndFlush(List.of(newRequest(), newRequest()));
+        List<UUID> uuids = records.stream().map(FuneralRequest::getUuid).toList();
+        var archived = bulk.execute(new FuneralRequestBulkDto(BulkOperation.ARCHIVE, uuids, null, null));
+        assertEquals(uuids, archived.successful());
+        assertTrue(archived.errors().isEmpty());
+        var archivedTags = bulk.execute(new FuneralRequestBulkDto(BulkOperation.ADD_TAG, uuids, null, tag.getId()));
+        assertTrue(archivedTags.successful().isEmpty());
+        assertEquals(2, archivedTags.errors().size());
+        assertTrue(bulk.execute(new FuneralRequestBulkDto(BulkOperation.RESTORE, uuids, null, null)).errors().isEmpty());
+        assertTrue(bulk.execute(new FuneralRequestBulkDto(BulkOperation.CHANGE_STATUS,
+                uuids, RequestStatus.CONFIRMED, null)).errors().isEmpty());
+        assertTrue(bulk.execute(new FuneralRequestBulkDto(BulkOperation.ADD_TAG, uuids, null, tag.getId())).errors().isEmpty());
+        for (UUID uuid : uuids) {
+            assertEquals(1, requests.findByUuid(uuid).orElseThrow().getTags().size());
+        }
+        assertTrue(bulk.execute(new FuneralRequestBulkDto(BulkOperation.REMOVE_TAG, uuids, null, tag.getId())).errors().isEmpty());
+        for (FuneralRequest original : records) {
+            FuneralRequest saved = requests.findByUuid(original.getUuid()).orElseThrow();
+            assertFalse(saved.isArchived());
+            assertEquals(RequestStatus.CONFIRMED, saved.getStatus());
+            assertTrue(saved.getTags().isEmpty());
+            assertEquals(original.getVersion() + 5, saved.getVersion());
+            assertEquals(original.getRequestCode(), saved.getRequestCode());
+            assertEquals(original.getCreatedAt(), saved.getCreatedAt());
+        }
+        assertEquals(1, context.getBean(TagRepository.class).count());
+    }
+
+    @Test
+    void bulkStatusBusinessErrorAndUnknownUuidDoNotUndoSuccessfulItem() {
+        FuneralRequest first = requests.saveAndFlush(newRequest());
+        FuneralRequest secondInput = newRequest();
+        secondInput.setStatus(RequestStatus.CONFIRMED);
+        FuneralRequest second = requests.saveAndFlush(secondInput);
+        UUID unknown = UUID.randomUUID();
+        var result = context.getBean(FuneralRequestBulkService.class).execute(new FuneralRequestBulkDto(
+                BulkOperation.CHANGE_STATUS, List.of(first.getUuid(), second.getUuid(), unknown), RequestStatus.COMPLETED, null));
+        assertEquals(List.of(second.getUuid()), result.successful());
+        assertEquals(2, result.errors().size());
+        assertEquals(first.getUuid(), result.errors().get(0).uuid());
+        assertEquals(unknown, result.errors().get(1).uuid());
+        assertEquals(RequestStatus.NEW, requests.findByUuid(first.getUuid()).orElseThrow().getStatus());
+        assertEquals(RequestStatus.COMPLETED, requests.findByUuid(second.getUuid()).orElseThrow().getStatus());
+    }
+
+    @Test
+    void databaseFailureRollsBackOnlyOneBulkItemAndLaterItemStillCommits() throws Exception {
+        List<FuneralRequest> records = requests.saveAllAndFlush(List.of(newRequest(), newRequest(), newRequest()));
+        long failedId = records.get(1).getId();
+        // Ограничение создаётся только во временной схеме этого теста и удаляется в finally.
+        try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
+            statement.execute("CREATE FUNCTION reject_bulk_archive() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN "
+                    + "IF NEW.id = " + failedId + " AND NEW.archived THEN RAISE EXCEPTION 'test archive failure'; END IF; "
+                    + "RETURN NEW; END; $$");
+            statement.execute("CREATE TRIGGER reject_bulk_archive BEFORE UPDATE ON funeral_requests "
+                    + "FOR EACH ROW EXECUTE FUNCTION reject_bulk_archive()");
+        }
+        try {
+            var result = context.getBean(FuneralRequestBulkService.class).execute(new FuneralRequestBulkDto(
+                    BulkOperation.ARCHIVE, records.stream().map(FuneralRequest::getUuid).toList(), null, null));
+            assertEquals(List.of(records.get(0).getUuid(), records.get(2).getUuid()), result.successful());
+            assertEquals(1, result.errors().size());
+            assertEquals(records.get(1).getUuid(), result.errors().get(0).uuid());
+            assertFalse(result.errors().get(0).message().contains("test archive failure"));
+            for (int index = 0; index < records.size(); index++) {
+                FuneralRequest original = records.get(index);
+                FuneralRequest saved = requests.findByUuid(original.getUuid()).orElseThrow();
+                assertEquals(index != 1, saved.isArchived());
+                assertEquals(original.getVersion() + (index == 1 ? 0 : 1), saved.getVersion());
+            }
+        } finally {
+            try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
+                statement.execute("DROP TRIGGER reject_bulk_archive ON funeral_requests");
+                statement.execute("DROP FUNCTION reject_bulk_archive()");
+            }
+        }
     }
 
     @Test

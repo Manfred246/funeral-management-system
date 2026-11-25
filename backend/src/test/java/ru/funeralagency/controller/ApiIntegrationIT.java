@@ -141,6 +141,24 @@ class ApiIntegrationIT {
     }
 
     @Test
+    void bulkArchiveReturnsPartialSuccessAndPersistsBothSuccessfulRecords() throws Exception {
+        var repository = context.getBean(FuneralRequestRepository.class);
+        var first = repository.findById(1L).orElseThrow();
+        var second = repository.findById(2L).orElseThrow();
+        UUID unknown = UUID.randomUUID();
+        String body = objectMapper.writeValueAsString(Map.of("operation", "ARCHIVE",
+                "uuids", java.util.List.of(first.getUuid(), unknown, second.getUuid())));
+        mockMvc.perform(post("/api/requests/bulk").contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.successful.length()").value(2))
+                .andExpect(jsonPath("$.errors.length()").value(1))
+                .andExpect(jsonPath("$.errors[0].uuid").value(unknown.toString()));
+        assertTrue(repository.findByUuid(first.getUuid()).orElseThrow().isArchived());
+        assertTrue(repository.findByUuid(second.getUuid()).orElseThrow().isArchived());
+        assertEquals(first.getVersion() + 1, repository.findByUuid(first.getUuid()).orElseThrow().getVersion());
+        assertEquals(second.getVersion() + 1, repository.findByUuid(second.getUuid()).orElseThrow().getVersion());
+    }
+
+    @Test
     void notesApiPersistsCurrentAuthorAndRejectsAnotherRequestAndArchivedMutations() throws Exception {
         var requests = context.getBean(FuneralRequestRepository.class);
         var first = requests.findById(1L).orElseThrow();

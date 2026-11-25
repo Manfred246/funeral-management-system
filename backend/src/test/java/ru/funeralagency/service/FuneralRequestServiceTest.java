@@ -386,6 +386,16 @@ class FuneralRequestServiceTest {
         org.mockito.Mockito.verifyNoInteractions(requestRepository);
     }
 
+    @ParameterizedTest
+    @CsvSource({"NEW,COMPLETED", "COMPLETED,CANCELLED", "CANCELLED,IN_PROGRESS"})
+    void statusOnlyChangeUsesTheSameForbiddenTransitions(RequestStatus current, RequestStatus next) {
+        FuneralRequest existing = validRequest(5L, current);
+        when(requestRepository.findByUuid(REQUEST_UUID)).thenReturn(Optional.of(existing));
+        assertThrows(BusinessException.class, () -> service.changeStatusByUuid(REQUEST_UUID, next));
+        assertEquals(current, existing.getStatus());
+        verify(requestRepository, never()).saveAndFlush(any());
+    }
+
     private FuneralRequest validRequest(Long id, RequestStatus status) {
         FuneralRequest request = new FuneralRequest(
                 id,
