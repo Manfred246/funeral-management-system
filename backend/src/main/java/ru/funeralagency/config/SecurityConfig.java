@@ -60,7 +60,7 @@ public class SecurityConfig {
                                 .hasAnyRole("MANAGER", "ADMIN")
                         .requestMatchers(HttpMethod.DELETE, "/api/requests/*/notes/*")
                                 .hasAnyRole("MANAGER", "ADMIN")
-                        .requestMatchers(HttpMethod.GET, "/api/requests", "/api/requests/**", "/api/statistics",
+                        .requestMatchers(HttpMethod.GET, "/api/requests", "/api/requests/**", "/api/statistics", "/api/analytics/summary",
                                 "/api/clients", "/api/clients/**").hasAnyRole("VIEWER", "MANAGER", "ADMIN")
                         .requestMatchers(HttpMethod.POST, "/api/requests", "/api/requests/*/restore", "/api/requests/bulk", "/api/clients")
                                 .hasAnyRole("MANAGER", "ADMIN")

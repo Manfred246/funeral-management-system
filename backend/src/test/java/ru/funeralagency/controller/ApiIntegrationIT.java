@@ -143,6 +143,24 @@ class ApiIntegrationIT {
     }
 
     @Test
+    void analyticsSummaryUsesRealAggregatesAndLegacyStatisticsStillWorks() throws Exception {
+        try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
+            statement.execute("UPDATE funeral_requests SET archived = (id IN (1, 2)), urgent = (id IN (2, 3, 4))");
+        }
+        mockMvc.perform(get("/api/analytics/summary"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.totalRequests").value(12))
+                .andExpect(jsonPath("$.activeRequests").value(10)).andExpect(jsonPath("$.archivedRequests").value(2))
+                .andExpect(jsonPath("$.urgentRequests").value(3)).andExpect(jsonPath("$.averagePrice").value(64250.00))
+                .andExpect(jsonPath("$.byCeremonyType.length()").value(2))
+                .andExpect(jsonPath("$.byStatus").isNotEmpty())
+                .andExpect(jsonPath("$.byPriority[0].priority").value(0))
+                .andExpect(jsonPath("$.byPriority[0].count").value(12));
+        mockMvc.perform(get("/api/statistics")).andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalClients").value(6)).andExpect(jsonPath("$.totalRequests").value(12))
+                .andExpect(jsonPath("$.averagePrice").value(64250.00));
+    }
+
+    @Test
     void normalRestCreateIgnoresCodeAndTriggerReturnsGeneratedValue() throws Exception {
         var body = (com.fasterxml.jackson.databind.node.ObjectNode) objectMapper.readTree(requestBody(1, "100", null));
         body.put("requestCode", "CLIENT-SUPPLIED-CODE");

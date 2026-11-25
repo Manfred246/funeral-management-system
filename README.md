@@ -642,6 +642,37 @@ Apply повторно валидирует файл и строки; сохра
 Неверный mode, отсутствующий file или неправильные параметры export дают 400;
 без JWT — 401, VIEWER при импорте — 403. SQL и технические детали в errors не возвращаются.
 
+## Аналитика
+
+`GET /api/analytics/summary` доступен VIEWER/MANAGER/ADMIN с Bearer JWT.
+Существующий `/api/statistics` сохраняет прежний контракт и реализацию.
+Summary учитывает все заявки, включая архивные, без фильтров.
+
+```json
+{
+  "totalRequests": 1,
+  "activeRequests": 1,
+  "archivedRequests": 0,
+  "urgentRequests": 1,
+  "averagePrice": 100.00,
+  "byCeremonyType": [{"ceremonyTypeId":1,"code":"BURIAL","name":"Захоронение","count":1}],
+  "byStatus": [{"status":"NEW","count":1}],
+  "byPriority": [{"priority":4,"count":1}]
+}
+```
+
+activeRequests — количество с archived=false, независимо от статуса;
+archivedRequests — archived=true. urgentRequests учитывает срочные и в архиве.
+Средняя цена также учитывает архив: точный SUM(price), делённый на COUNT,
+с округлением HALF_UP до двух знаков. Для пустой БД — 0.00.
+
+Используются четыре JPQL aggregate query: общие COUNT/условные SUM/SUM(price),
+GROUP BY CeremonyType (ID/code/name), GROUP BY RequestStatus и GROUP BY priority.
+Service получает scalar projections, а не FuneralRequest entities.
+Группы содержат только встречающиеся значения, в порядке ID типа / статуса / priority.
+Отключённый CeremonyType также отображается, если на него есть заявки.
+При пустой БД счётчики равны нулю, группировки — пустые массивы.
+
 ## Бизнес-правила
 
 - новая заявка создаётся со статусом `NEW`;
@@ -696,6 +727,9 @@ FK/уникальность/непустой текст и удаление вм
 CSV-тесты покрывают фильтры, quoting/commas/newlines, preview без изменений,
 CREATE_ONLY/UPSERT, смешанные результаты и права. PostgreSQL-тесты дополнительно
 сверяют snapshot БД/sequence до и после preview, generated code и откат ошибочной строки.
+Analytics-тесты проверяют DTO, totals, округление средней цены, группы, доступ всех ролей
+и компиляцию JPQL без подключения к БД. PostgreSQL-тесты проверяют реальные агрегаты,
+пустую БД, четыре SQL-запроса и отсутствие загрузки entities.
 Пользователь тестовой БД должен иметь право создавать и удалять тестовые схемы:
 
 ```powershell

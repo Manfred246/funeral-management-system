@@ -30,6 +30,8 @@ import ru.funeralagency.dto.FuneralRequestBulkDto;
 import ru.funeralagency.dto.CsvImportMode;
 import ru.funeralagency.service.FuneralRequestCsv;
 import ru.funeralagency.service.FuneralRequestCsvService;
+import ru.funeralagency.service.AnalyticsService;
+import ru.funeralagency.dto.AnalyticsSummaryDto;
 import ru.funeralagency.model.User;
 import ru.funeralagency.exception.EntityNotFoundException;
 import ru.funeralagency.model.Tag;
@@ -495,6 +497,74 @@ class JpaRepositoriesIT {
         archived.setPrice(new BigDecimal("300.00"));
         archived.setArchived(true);
         return requests.saveAllAndFlush(List.of(first, second, archived));
+    }
+
+    @Test
+    void analyticsAggregatesAllRequestsAndGroupsWithoutLoadingEntities() {
+        requests.deleteAllInBatch();
+        CeremonyType custom = context.getBean(CeremonyTypeRepository.class)
+                .saveAndFlush(new CeremonyType(null, "MEMORIAL", "Прощание", false));
+        List<FuneralRequest> records = List.of(newRequest(), newRequest(), newRequest(), newRequest(), newRequest());
+        RequestStatus[] statuses = {RequestStatus.NEW, RequestStatus.CONFIRMED, RequestStatus.COMPLETED,
+                RequestStatus.CANCELLED, RequestStatus.IN_PROGRESS};
+        for (int index = 0; index < records.size(); index++) {
+            FuneralRequest request = records.get(index);
+            request.setPrice(BigDecimal.valueOf(index * 100L));
+            request.setArchived(index == 1 || index == 3);
+            request.setUrgent(index == 0 || index == 2 || index == 3);
+            request.setPriority(index < 2 ? 4 : index == 2 ? 1 : 0);
+            request.setStatus(statuses[index]);
+            if (index >= 2 && index < 4) {
+                request.setCeremonyType(new CeremonyType(2L, "CREMATION", "Кремация", true));
+            } else if (index == 4) {
+                request.setCeremonyType(custom);
+            }
+        }
+        requests.saveAllAndFlush(records);
+        // Несколько тегов одной заявки не должны умножать её вклад в агрегаты.
+        Tag firstTag = context.getBean(TagService.class).create("Аналитика");
+        Tag secondTag = context.getBean(TagService.class).create("Транспорт");
+        requestService.addTagByUuid(records.get(0).getUuid(), firstTag.getId());
+        requestService.addTagByUuid(records.get(0).getUuid(), secondTag.getId());
+        var statistics = context.getBean(EntityManagerFactory.class).unwrap(SessionFactory.class).getStatistics();
+        boolean enabledBefore = statistics.isStatisticsEnabled();
+        statistics.setStatisticsEnabled(true);
+        statistics.clear();
+        try {
+            var summary = context.getBean(AnalyticsService.class).getSummary();
+            assertEquals(5, summary.totalRequests());
+            assertEquals(3, summary.activeRequests());
+            assertEquals(2, summary.archivedRequests());
+            assertEquals(3, summary.urgentRequests());
+            assertEquals(new BigDecimal("200.00"), summary.averagePrice());
+            assertEquals(List.of(new AnalyticsSummaryDto.CeremonyTypeCount(1L, "BURIAL", "Захоронение", 2),
+                    new AnalyticsSummaryDto.CeremonyTypeCount(2L, "CREMATION", "Кремация", 2),
+                    new AnalyticsSummaryDto.CeremonyTypeCount(custom.getId(), "MEMORIAL", "Прощание", 1)), summary.byCeremonyType());
+            assertEquals(5, summary.byStatus().size());
+            for (RequestStatus status : RequestStatus.values()) {
+                assertTrue(summary.byStatus().contains(new AnalyticsSummaryDto.StatusCount(status, 1)));
+            }
+            assertEquals(List.of(new AnalyticsSummaryDto.PriorityCount(0, 2),
+                    new AnalyticsSummaryDto.PriorityCount(1, 1), new AnalyticsSummaryDto.PriorityCount(4, 2)), summary.byPriority());
+            assertEquals(4, statistics.getPrepareStatementCount());
+            assertEquals(0, statistics.getEntityLoadCount());
+        } finally {
+            statistics.setStatisticsEnabled(enabledBefore);
+        }
+    }
+
+    @Test
+    void analyticsOnEmptyDatabaseReturnsZeroCountsAndAverage() {
+        requests.deleteAllInBatch();
+        var summary = context.getBean(AnalyticsService.class).getSummary();
+        assertEquals(0, summary.totalRequests());
+        assertEquals(0, summary.activeRequests());
+        assertEquals(0, summary.archivedRequests());
+        assertEquals(0, summary.urgentRequests());
+        assertEquals(new BigDecimal("0.00"), summary.averagePrice());
+        assertTrue(summary.byCeremonyType().isEmpty());
+        assertTrue(summary.byStatus().isEmpty());
+        assertTrue(summary.byPriority().isEmpty());
     }
 
     @Test
