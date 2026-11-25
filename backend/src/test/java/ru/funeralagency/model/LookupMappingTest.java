@@ -7,6 +7,26 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class LookupMappingTest {
     @Test
+    void convertersPreserveDatabaseIdsAndNulls() {
+        CeremonyTypeConverter types = new CeremonyTypeConverter();
+        RequestStatusConverter statuses = new RequestStatusConverter();
+        for (CeremonyType type : CeremonyType.values()) {
+            assertEquals(type.getDatabaseId(), types.convertToDatabaseColumn(type));
+            assertEquals(type, types.convertToEntityAttribute(type.getDatabaseId()));
+        }
+        for (RequestStatus status : RequestStatus.values()) {
+            assertEquals(status.getDatabaseId(), statuses.convertToDatabaseColumn(status));
+            assertEquals(status, statuses.convertToEntityAttribute(status.getDatabaseId()));
+        }
+        org.junit.jupiter.api.Assertions.assertNull(types.convertToDatabaseColumn(null));
+        org.junit.jupiter.api.Assertions.assertNull(types.convertToEntityAttribute(null));
+        org.junit.jupiter.api.Assertions.assertNull(statuses.convertToDatabaseColumn(null));
+        org.junit.jupiter.api.Assertions.assertNull(statuses.convertToEntityAttribute(null));
+        assertThrows(IllegalArgumentException.class, () -> types.convertToEntityAttribute(99));
+        assertThrows(IllegalArgumentException.class, () -> statuses.convertToEntityAttribute(99));
+    }
+
+    @Test
     void ceremonyIdsMatchSchema() {
         assertEquals(1, CeremonyType.BURIAL.getDatabaseId());
         assertEquals(2, CeremonyType.CREMATION.getDatabaseId());

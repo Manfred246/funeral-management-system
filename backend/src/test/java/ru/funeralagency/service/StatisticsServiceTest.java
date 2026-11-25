@@ -26,9 +26,8 @@ class StatisticsServiceTest {
 
     @Test
     void calculatesAllRequiredIndicators() {
-        when(clientRepository.findAll()).thenReturn(List.of(new ru.funeralagency.model.Client(),
-                new ru.funeralagency.model.Client()));
-        when(requestRepository.findAll()).thenReturn(List.of(
+        when(clientRepository.count()).thenReturn(2L);
+        when(requestRepository.findAllByOrderByIdAsc()).thenReturn(List.of(
                 request(RequestStatus.NEW, "100.00"),
                 request(RequestStatus.COMPLETED, "200.00"),
                 request(RequestStatus.CANCELLED, "300.00"),
@@ -50,8 +49,8 @@ class StatisticsServiceTest {
 
     @Test
     void returnsZeroAverageForEmptyRequestList() {
-        when(clientRepository.findAll()).thenReturn(List.of());
-        when(requestRepository.findAll()).thenReturn(List.of());
+        when(clientRepository.count()).thenReturn(0L);
+        when(requestRepository.findAllByOrderByIdAsc()).thenReturn(List.of());
 
         StatisticsResponseDto result = new StatisticsService(
                 clientRepository,

@@ -25,8 +25,8 @@ public class StatisticsService {
     }
 
     public StatisticsResponseDto getStatistics() {
-        long totalClients = clientRepository.findAll().size();
-        List<FuneralRequest> requests = requestRepository.findAll();
+        long totalClients = clientRepository.count();
+        List<FuneralRequest> requests = requestRepository.findAllByOrderByIdAsc();
 
         long newRequests = 0;
         long completedRequests = 0;

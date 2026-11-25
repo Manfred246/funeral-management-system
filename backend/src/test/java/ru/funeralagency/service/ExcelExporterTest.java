@@ -2,10 +2,10 @@ package ru.funeralagency.service;
 
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.junit.jupiter.api.Test;
-import ru.funeralagency.model.CeremonyType;
-import ru.funeralagency.model.FuneralRequest;
 import ru.funeralagency.exception.BusinessException;
-import static org.junit.jupiter.api.Assertions.assertThrows;
+import ru.funeralagency.model.CeremonyType;
+import ru.funeralagency.model.Client;
+import ru.funeralagency.model.FuneralRequest;
 import ru.funeralagency.model.RequestStatus;
 
 import java.io.ByteArrayInputStream;
@@ -15,6 +15,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ExcelExporterTest {
@@ -29,7 +30,7 @@ class ExcelExporterTest {
     void exportsHeadersAndRequestData() throws Exception {
         FuneralRequest request = new FuneralRequest(
                 7L,
-                3L,
+                new Client(3L, "Клиент", "+79991234567", null),
                 "Иванов Иван Иванович",
                 LocalDate.of(2027, 1, 15),
                 CeremonyType.BURIAL,

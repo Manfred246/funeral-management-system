@@ -1,18 +1,10 @@
 package ru.funeralagency.repository;
 
+import org.springframework.data.jpa.repository.JpaRepository;
 import ru.funeralagency.model.Client;
 
 import java.util.List;
-import java.util.Optional;
 
-public interface ClientRepository {
-    Client create(Client client);
-
-    List<Client> findAll();
-
-    Optional<Client> findById(long id);
-
-    Client update(Client client);
-
-    void deleteById(long id);
+public interface ClientRepository extends JpaRepository<Client, Long> {
+    List<Client> findAllByOrderByIdAsc();
 }

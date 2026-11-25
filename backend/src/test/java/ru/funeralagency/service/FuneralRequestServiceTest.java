@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.Sort;
 import ru.funeralagency.exception.BusinessException;
 import ru.funeralagency.exception.EntityNotFoundException;
 import ru.funeralagency.exception.ValidationException;
@@ -23,9 +24,9 @@ import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -50,19 +51,22 @@ class FuneralRequestServiceTest {
     @Test
     void createsRequestForExistingClient() {
         FuneralRequest request = validRequest(null, RequestStatus.CONFIRMED);
-        when(clientRepository.findById(1L)).thenReturn(Optional.of(client()));
-        when(requestRepository.create(any())).thenAnswer(invocation -> {
+        request.setClient(null);
+        Client existingClient = client();
+        when(clientRepository.findById(1L)).thenReturn(Optional.of(existingClient));
+        when(requestRepository.saveAndFlush(any())).thenAnswer(invocation -> {
             return validRequest(10L, RequestStatus.NEW);
         });
 
-        FuneralRequest created = service.create(request);
+        FuneralRequest created = service.create(request, 1L);
 
         assertEquals(10L, created.getId());
         assertEquals(RequestStatus.NEW, created.getStatus());
         assertNotNull(created.getCreatedAt());
         assertNull(request.getId());
         assertNull(request.getCreatedAt());
-        verify(requestRepository).create(request);
+        assertSame(existingClient, request.getClient());
+        verify(requestRepository).saveAndFlush(request);
     }
 
     @Test
@@ -70,9 +74,9 @@ class FuneralRequestServiceTest {
         FuneralRequest request = validRequest(null, RequestStatus.NEW);
         when(clientRepository.findById(1L)).thenReturn(Optional.empty());
 
-        assertThrows(ValidationException.class, () -> service.create(request));
+        assertThrows(ValidationException.class, () -> service.create(request, 1L));
 
-        verify(requestRepository, never()).create(any());
+        verify(requestRepository, never()).saveAndFlush(any());
     }
 
     @Test
@@ -81,9 +85,9 @@ class FuneralRequestServiceTest {
         FuneralRequest update = validRequest(null, RequestStatus.COMPLETED);
         when(requestRepository.findById(5L)).thenReturn(Optional.of(existing));
 
-        assertThrows(BusinessException.class, () -> service.update(5L, update));
+        assertThrows(BusinessException.class, () -> service.update(5L, update, 1L));
 
-        verify(requestRepository, never()).update(any());
+        verify(requestRepository, never()).saveAndFlush(any());
     }
 
     @Test
@@ -95,11 +99,11 @@ class FuneralRequestServiceTest {
         second.setDeceasedFullName("Иванов Иван");
         second.setCeremonyType(CeremonyType.CREMATION);
         second.setPrice(new BigDecimal("100.00"));
-        when(requestRepository.findByDeceasedName("иванов")).thenReturn(List.of(second));
-        when(requestRepository.findByClientId(1L)).thenReturn(List.of(first, second));
+        when(requestRepository.findByDeceasedFullNameContainingIgnoreCaseOrderByIdAsc("иванов")).thenReturn(List.of(second));
+        when(requestRepository.findByClientIdOrderByIdAsc(1L)).thenReturn(List.of(first, second));
         when(requestRepository.findFiltered(RequestStatus.CONFIRMED, CeremonyType.CREMATION, null, null))
                 .thenReturn(List.of(second));
-        when(requestRepository.findAllOrderByPrice(true)).thenReturn(List.of(second, first));
+        when(requestRepository.findAll(Sort.by(Sort.Direction.ASC, "price").and(Sort.by("id")))).thenReturn(List.of(second, first));
 
         assertEquals(List.of(second), service.search("иванов", null));
         assertEquals(List.of(first, second), service.search(null, 1L));
@@ -123,18 +127,20 @@ class FuneralRequestServiceTest {
         saved.setCreatedAt(existing.getCreatedAt());
         when(requestRepository.findById(5L)).thenReturn(Optional.of(existing));
         when(clientRepository.findById(1L)).thenReturn(Optional.of(client()));
-        when(requestRepository.update(input)).thenReturn(saved);
-        assertSame(saved, service.update(5L, input));
-        assertEquals(5L, input.getId());
-        assertEquals(existing.getCreatedAt(), input.getCreatedAt());
+        when(requestRepository.saveAndFlush(existing)).thenReturn(saved);
+        assertSame(saved, service.update(5L, input, 1L));
+        assertEquals(5L, existing.getId());
+        assertEquals(existing.getCreatedAt(), saved.getCreatedAt());
+        assertEquals(RequestStatus.CONFIRMED, existing.getStatus());
+        assertEquals(input.getPrice(), existing.getPrice());
     }
 
     @Test
     void missingRequestCannotBeUpdated() {
         when(requestRepository.findById(5L)).thenReturn(Optional.empty());
         assertThrows(EntityNotFoundException.class,
-                () -> service.update(5L, validRequest(null, RequestStatus.CONFIRMED)));
-        verify(requestRepository, never()).update(any());
+                () -> service.update(5L, validRequest(null, RequestStatus.CONFIRMED), 1L));
+        verify(requestRepository, never()).saveAndFlush(any());
     }
 
     @Test
@@ -152,7 +158,7 @@ class FuneralRequestServiceTest {
     private FuneralRequest validRequest(Long id, RequestStatus status) {
         return new FuneralRequest(
                 id,
-                1L,
+                new Client(1L, "Клиент", "+79991234567", null),
                 "Иванов Иван Иванович",
                 LocalDate.now().plusDays(2),
                 CeremonyType.BURIAL,

@@ -1,9 +1,12 @@
 package ru.funeralagency.service;
 
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import ru.funeralagency.exception.EntityNotFoundException;
 import ru.funeralagency.exception.ValidationException;
 import ru.funeralagency.model.CeremonyType;
+import ru.funeralagency.model.Client;
 import ru.funeralagency.model.FuneralRequest;
 import ru.funeralagency.model.RequestStatus;
 import ru.funeralagency.repository.ClientRepository;
@@ -27,20 +30,22 @@ public class FuneralRequestService {
         this.clientRepository = clientRepository;
     }
 
-    public FuneralRequest create(FuneralRequest request) {
+    @Transactional
+    public FuneralRequest create(FuneralRequest request, Long clientId) {
         if (request == null) {
             throw new ValidationException("Заявка не может быть null");
         }
         request.setId(null);
         request.setStatus(RequestStatus.NEW);
         request.setCreatedAt(null);
+        request.setClient(findClient(clientId));
         normalizeAndValidate(request);
-        ensureClientExists(request.getClientId());
-        return requestRepository.create(request);
+        request.setPrice(request.getPrice().setScale(2));
+        return requestRepository.saveAndFlush(request);
     }
 
     public List<FuneralRequest> findAll() {
-        return requestRepository.findAll();
+        return requestRepository.findAllByOrderByIdAsc();
     }
 
     public FuneralRequest findById(Long id) {
@@ -51,7 +56,8 @@ public class FuneralRequestService {
                 ));
     }
 
-    public FuneralRequest update(Long id, FuneralRequest request) {
+    @Transactional
+    public FuneralRequest update(Long id, FuneralRequest request, Long clientId) {
         validateId(id);
         if (request == null) {
             throw new ValidationException("Заявка не может быть null");
@@ -59,17 +65,24 @@ public class FuneralRequestService {
 
         FuneralRequest existing = findById(id);
         FuneralRequestValidationRules.validateStatusTransition(existing.getStatus(), request.getStatus());
-        request.setId(id);
-        request.setCreatedAt(existing.getCreatedAt());
+        request.setClient(findClient(clientId));
         FuneralRequestValidationRules.normalize(request);
         FuneralRequestValidationRules.validateForUpdate(request, existing.getCeremonyDate());
-        ensureClientExists(request.getClientId());
-        return requestRepository.update(request);
+        existing.setClient(request.getClient());
+        existing.setDeceasedFullName(request.getDeceasedFullName());
+        existing.setCeremonyDate(request.getCeremonyDate());
+        existing.setCeremonyType(request.getCeremonyType());
+        existing.setStatus(request.getStatus());
+        existing.setPrice(request.getPrice().setScale(2));
+        existing.setComment(request.getComment());
+        return requestRepository.saveAndFlush(existing);
     }
 
+    @Transactional
     public void deleteById(Long id) {
-        findById(id);
-        requestRepository.deleteById(id);
+        FuneralRequest request = findById(id);
+        requestRepository.delete(request);
+        requestRepository.flush();
     }
 
     public List<FuneralRequest> search(String deceasedName, Long clientId) {
@@ -80,12 +93,12 @@ public class FuneralRequestService {
             if (clientId <= 0) {
                 throw new ValidationException("ID клиента должен быть положительным числом");
             }
-            return requestRepository.findByClientId(clientId);
+            return requestRepository.findByClientIdOrderByIdAsc(clientId);
         }
         if (deceasedName.isBlank()) {
             throw new ValidationException("ФИО для поиска не может быть пустым");
         }
-        return requestRepository.findByDeceasedName(deceasedName.trim());
+        return requestRepository.findByDeceasedFullNameContainingIgnoreCaseOrderByIdAsc(deceasedName.trim());
     }
 
     public List<FuneralRequest> filter(
@@ -101,13 +114,11 @@ public class FuneralRequestService {
     }
 
     public List<FuneralRequest> sort(String field, boolean ascending) {
-        if ("ceremonyDate".equals(field)) {
-            return requestRepository.findAllOrderByCeremonyDate(ascending);
+        if (!"ceremonyDate".equals(field) && !"price".equals(field)) {
+            throw new ValidationException("Сортировать можно по ceremonyDate или price");
         }
-        if ("price".equals(field)) {
-            return requestRepository.findAllOrderByPrice(ascending);
-        }
-        throw new ValidationException("Сортировать можно по ceremonyDate или price");
+        Sort.Direction direction = ascending ? Sort.Direction.ASC : Sort.Direction.DESC;
+        return requestRepository.findAll(Sort.by(direction, field).and(Sort.by("id")));
     }
 
     private void normalizeAndValidate(FuneralRequest request) {
@@ -115,10 +126,12 @@ public class FuneralRequestService {
         FuneralRequestValidationRules.validate(request);
     }
 
-    private void ensureClientExists(Long clientId) {
-        if (clientRepository.findById(clientId).isEmpty()) {
-            throw new ValidationException("Нельзя создать заявку для несуществующего клиента");
+    private Client findClient(Long clientId) {
+        if (clientId == null || clientId <= 0) {
+            throw new ValidationException("ID клиента должен быть положительным числом");
         }
+        return clientRepository.findById(clientId)
+                .orElseThrow(() -> new ValidationException("Нельзя создать заявку для несуществующего клиента"));
     }
 
     private void validateId(Long id) {

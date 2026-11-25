@@ -54,7 +54,7 @@ public class FuneralRequestController {
     public ResponseEntity<FuneralRequestResponseDto> create(
             @RequestBody FuneralRequestCreateDto dto
     ) {
-        FuneralRequest created = requestService.create(requestMapper.toEntity(dto));
+        FuneralRequest created = requestService.create(requestMapper.toEntity(dto), dto.getClientId());
         return ResponseEntity
                 .created(URI.create("/api/requests/" + created.getId()))
                 .body(requestMapper.toResponseDto(created));
@@ -75,7 +75,7 @@ public class FuneralRequestController {
             @PathVariable Long id,
             @RequestBody FuneralRequestUpdateDto dto
     ) {
-        FuneralRequest updated = requestService.update(id, requestMapper.toEntity(dto));
+        FuneralRequest updated = requestService.update(id, requestMapper.toEntity(dto), dto.getClientId());
         return requestMapper.toResponseDto(updated);
     }
 

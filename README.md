@@ -10,7 +10,7 @@
 Данные хранятся в PostgreSQL. Консольный клиент работает только через REST API:
 
 ```text
-Console Client → REST Controller → Service → JDBC Repository → PostgreSQL
+Console Client → REST Controller → Service → Spring Data JPA Repository → PostgreSQL
 ```
 
 ## Требования для запуска
@@ -22,19 +22,44 @@ Console Client → REST Controller → Service → JDBC Repository → PostgreSQ
 
 ## Создание базы данных
 
-Создайте пустую базу `funeral_management` и выполните скрипты из корня проекта:
+Создайте пустую базу `funeral_management`:
 
 ```powershell
 createdb -h localhost -p 5432 -U postgres -W funeral_management
-psql -h localhost -p 5432 -U postgres -W -d funeral_management -v ON_ERROR_STOP=1 -f database/schema.sql
+```
+
+При первом запуске backend Flyway выполняет
+`backend/src/main/resources/db/migration/V1__baseline_kr1.sql`: создаёт таблицы,
+ограничения, индекс и обязательные справочники. Клиенты и заявки не добавляются.
+Hibernate работает с `spring.jpa.hibernate.ddl-auto=validate` и только проверяет mapping.
+
+Для демонстрационных данных после первого успешного запуска backend можно выполнить:
+
+```powershell
 psql -h localhost -p 5432 -U postgres -W -d funeral_management -v ON_ERROR_STOP=1 -f database/seed.sql
 ```
 
-В DBeaver эти же файлы можно открыть в SQL-редакторе и выполнить по порядку.
+`seed.sql` добавляет 6 клиентов и 12 заявок только в пустые бизнес-таблицы.
+`database/schema.sql` сохранён как исходная схема КР №1 и для проверки обновления
+существующей БД. При обычном новом запуске вручную выполнять его не нужно.
+`drop.sql` — отдельный разрушительный учебный скрипт, backend его не запускает.
 
-- `schema.sql` создаёт таблицы и связи;
-- `seed.sql` добавляет 6 клиентов и 12 заявок;
-- `drop.sql` удаляет таблицы и предназначен только для тестовой или пустой БД.
+### Существующая база КР №1
+
+Перед первым запуском проверьте, что `DB_URL` указывает на нужную базу и выбранная
+схема соответствует `database/schema.sql`, включая ID справочников и ограничения.
+Сохраните резервную копию данных.
+
+Настройки `spring.flyway.baseline-on-migrate=true` и `baseline-version=1` позволяют
+принять непустую схему без `flyway_schema_history`: Flyway записывает маркер
+`BASELINE` версии 1 и не выполняет V1 повторно. Таблицы и данные сохраняются.
+На пустой схеме baseline не создаётся: V1 выполняется как обычная SQL-миграция.
+Следующие изменения схемы начинаются с V2.
+
+При последующих запусках Flyway читает `flyway_schema_history` и применяет только
+новые миграции. Baseline не проверяет все CHECK/FK и данные старой схемы;
+Hibernate validate проверяет соответствие отображённых колонок и типов,
+поэтому предварительная сверка исходной схемы обязательна.
 
 Основная связь:
 
@@ -64,7 +89,7 @@ $env:DB_PASSWORD = $databaseCredential.GetNetworkCredential().Password
 mvn -pl backend spring-boot:run
 ```
 
-Backend не создаёт и не очищает таблицы автоматически.
+Flyway управляет созданием и изменением схемы; Hibernate не создаёт и не очищает таблицы.
 
 ## Запуск консольного клиента
 
@@ -152,7 +177,7 @@ DELETE /api/requests/{id}
 - телефон и email клиента должны быть уникальными.
 
 Enum `CeremonyType` и `RequestStatus` используют явные `databaseId`. Для связи с
-БД не применяется `ordinal()`.
+БД не применяется `ordinal()`: JPA AttributeConverter сохраняет явные числовые ID.
 
 ## Обработка ошибок
 
@@ -172,11 +197,14 @@ REST API возвращает единый JSON-ответ без SQL и stack t
 
 ```powershell
 mvn clean test
-mvn clean install
+mvn clean package
 ```
 
-Интеграционные тесты используют отдельные временные схемы PostgreSQL и не
-изменяют таблицы `public`:
+Интеграционные тесты требуют реальную PostgreSQL и переменные `TEST_DB_*`.
+Они используют отдельные временные схемы, Flyway запускается до Hibernate validate;
+таблицы `public` не изменяются. Проверяются V1 на пустой схеме, baseline схемы КР №1
+с сохранением данных, JPA CRUD, поиск, фильтры, сортировка и текущий REST API.
+Пользователь тестовой БД должен иметь право создавать и удалять тестовые схемы:
 
 ```powershell
 $databaseCredential = Get-Credential -UserName postgres -Message 'Пароль PostgreSQL для тестов'
@@ -184,8 +212,26 @@ $env:TEST_DB_URL = 'jdbc:postgresql://localhost:5432/funeral_management'
 $env:TEST_DB_USERNAME = $databaseCredential.UserName
 $env:TEST_DB_PASSWORD = $databaseCredential.GetNetworkCredential().Password
 try {
-    mvn -Ppostgres-it clean install
+    mvn -Ppostgres-it clean test
 } finally {
     Remove-Item Env:TEST_DB_PASSWORD
 }
 ```
+
+## Docker
+
+Существующий Compose запускает PostgreSQL 17 и backend на Java 21:
+
+```powershell
+docker compose build
+docker compose up
+```
+
+Compose передаёт backend `DB_URL`, `DB_USERNAME`, `DB_PASSWORD` для подключения
+к сервису `postgres`. На новом volume существующие init-скрипты PostgreSQL
+создают схему КР №1 и демоданные; backend принимает её через Flyway baseline 1.
+На существующем volume init-скрипты не выполняются повторно, данные сохраняются.
+Новые миграции Flyway применяет при запуске backend.
+
+`docker compose down` сохраняет named volume. Для обновления backend удалять
+volume или запускать `down -v` не требуется.

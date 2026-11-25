@@ -1,12 +1,15 @@
 package ru.funeralagency.service;
 
+import org.hibernate.exception.ConstraintViolationException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import ru.funeralagency.exception.BusinessException;
-import ru.funeralagency.exception.DatabaseException;
+import org.springframework.dao.DataAccessResourceFailureException;
+import org.springframework.dao.DataIntegrityViolationException;
 import ru.funeralagency.exception.BusinessException;
 import ru.funeralagency.exception.EntityNotFoundException;
 import ru.funeralagency.exception.ValidationException;
@@ -36,7 +39,7 @@ class ClientServiceTest {
     void createNormalizesDataAndReturnsSavedClient() {
         Client input = new Client(99L, "  Иван   Иванов ", "+7 (999) 123-45-67", " ");
         Client saved = new Client(7L, "Иван Иванов", "+79991234567", null);
-        when(clients.create(input)).thenReturn(saved);
+        when(clients.saveAndFlush(input)).thenReturn(saved);
         assertSame(saved, service.create(input));
         assertNull(input.getId());
         assertEquals("Иван Иванов", input.getFullName());
@@ -57,24 +60,41 @@ class ClientServiceTest {
         Client input = new Client(99L, "Пётр Петров", "+7 (999) 222-33-44", null);
         Client saved = new Client(7L, "Пётр Петров", "+79992223344", null);
         when(clients.findById(7L)).thenReturn(Optional.of(existing));
-        when(clients.update(existing)).thenReturn(saved);
+        when(clients.saveAndFlush(existing)).thenReturn(saved);
         assertSame(saved, service.update(7L, input));
         assertEquals(7L, existing.getId());
         assertEquals("+79992223344", existing.getPhone());
     }
 
-    @Test
-    void duplicateContactBecomesBusinessConflict() {
-        when(clients.create(any())).thenThrow(databaseError("23505"));
-        assertThrows(BusinessException.class,
+    @ParameterizedTest
+    @ValueSource(strings = {"uq_clients_phone", "uq_clients_email"})
+    void duplicateContactBecomesBusinessConflict(String constraint) {
+        DataIntegrityViolationException failure = constraintError(constraint);
+        when(clients.saveAndFlush(any())).thenThrow(failure);
+        BusinessException error = assertThrows(BusinessException.class,
                 () -> service.create(new Client(null, "Иван Иванов", "+79991234567", null)));
+        assertEquals("Клиент с таким телефоном или email уже существует", error.getMessage());
+        assertSame(failure, error.getCause());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"uq_clients_phone", "uq_clients_email"})
+    void duplicateContactOnUpdateBecomesBusinessConflict(String constraint) {
+        Client existing = new Client(7L, "Иван Иванов", "+79991234567", null);
+        when(clients.findById(7L)).thenReturn(Optional.of(existing));
+        DataIntegrityViolationException failure = constraintError(constraint);
+        when(clients.saveAndFlush(existing)).thenThrow(failure);
+        BusinessException error = assertThrows(BusinessException.class,
+                () -> service.update(7L, new Client(null, "Пётр Петров", "+79992223344", "test@example.com")));
+        assertEquals("Клиент с таким телефоном или email уже существует", error.getMessage());
+        assertSame(failure, error.getCause());
     }
 
     @Test
     void missingClientCannotBeDeleted() {
         when(clients.findById(7L)).thenReturn(Optional.empty());
         assertThrows(EntityNotFoundException.class, () -> service.deleteById(7L));
-        verify(clients, never()).deleteById(anyLong());
+        verify(clients, never()).delete(any());
     }
 
     @Test
@@ -82,20 +102,21 @@ class ClientServiceTest {
         when(clients.findById(7L)).thenReturn(Optional.of(new Client()));
         when(requests.existsByClientId(7L)).thenReturn(true);
         assertThrows(BusinessException.class, () -> service.deleteById(7L));
-        verify(clients, never()).deleteById(anyLong());
+        verify(clients, never()).delete(any());
     }
 
     @Test
     void foreignKeyRaceBecomesConflictButConnectionErrorIsPreserved() {
         when(clients.findById(7L)).thenReturn(Optional.of(new Client()));
-        doThrow(databaseError("23503")).when(clients).deleteById(7L);
+        doThrow(constraintError("fk_funeral_requests_client")).when(clients).flush();
         assertThrows(BusinessException.class, () -> service.deleteById(7L));
-        DatabaseException failure = databaseError("08006");
-        doThrow(failure).when(clients).deleteById(7L);
-        assertSame(failure, assertThrows(DatabaseException.class, () -> service.deleteById(7L)));
+        DataAccessResourceFailureException failure = new DataAccessResourceFailureException("test");
+        doThrow(failure).when(clients).flush();
+        assertSame(failure, assertThrows(DataAccessResourceFailureException.class, () -> service.deleteById(7L)));
     }
 
-    private DatabaseException databaseError(String state) {
-        return new DatabaseException("Ошибка БД", new SQLException("test", state));
+    private DataIntegrityViolationException constraintError(String name) {
+        return new DataIntegrityViolationException("test",
+                new ConstraintViolationException("test", new SQLException("test"), name));
     }
 }

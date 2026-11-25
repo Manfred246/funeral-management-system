@@ -1,8 +1,11 @@
 package ru.funeralagency.controller;
 
+import jakarta.persistence.PersistenceException;
 import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataAccessException;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -13,7 +16,6 @@ import org.springframework.web.method.annotation.MethodArgumentTypeMismatchExcep
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 import ru.funeralagency.dto.ApiErrorResponse;
 import ru.funeralagency.exception.BusinessException;
-import ru.funeralagency.exception.DatabaseException;
 import ru.funeralagency.exception.EntityNotFoundException;
 import ru.funeralagency.exception.ValidationException;
 
@@ -65,9 +67,14 @@ public class ApiExceptionHandler {
         );
     }
 
-    @ExceptionHandler(DatabaseException.class)
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    public ResponseEntity<ApiErrorResponse> handleIntegrityError(HttpServletRequest request) {
+        return response(HttpStatus.CONFLICT, "Операция нарушает ограничения связанных данных", request);
+    }
+
+    @ExceptionHandler({DataAccessException.class, PersistenceException.class})
     public ResponseEntity<ApiErrorResponse> handleDatabaseError(
-            DatabaseException exception, HttpServletRequest request
+            RuntimeException exception, HttpServletRequest request
     ) {
         logger.error("Ошибка при обращении к БД", exception);
         return response(HttpStatus.INTERNAL_SERVER_ERROR, "Не удалось выполнить операцию с базой данных", request);

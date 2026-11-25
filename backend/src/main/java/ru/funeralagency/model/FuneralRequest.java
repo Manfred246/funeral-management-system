@@ -1,19 +1,56 @@
 package ru.funeralagency.model;
 
+import jakarta.persistence.Column;
+import jakarta.persistence.Convert;
+import jakarta.persistence.Entity;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
+import jakarta.persistence.Table;
+import org.hibernate.annotations.Generated;
+import org.hibernate.generator.EventType;
+
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 
+@Entity
+@Table(name = "funeral_requests")
 public class FuneralRequest {
 
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
-    private Long clientId;
+
+    @ManyToOne(optional = false)
+    @JoinColumn(name = "client_id", nullable = false)
+    private Client client;
+
+    @Column(name = "deceased_full_name", nullable = false, length = 255)
     private String deceasedFullName;
+
+    @Column(name = "ceremony_date", nullable = false)
     private LocalDate ceremonyDate;
+
+    @Convert(converter = CeremonyTypeConverter.class)
+    @Column(name = "ceremony_type_id", nullable = false)
     private CeremonyType ceremonyType;
+
+    @Convert(converter = RequestStatusConverter.class)
+    @Column(name = "status_id", nullable = false)
     private RequestStatus status;
+
+    @Column(nullable = false, precision = 12, scale = 2)
     private BigDecimal price;
+
+    // Значение по-прежнему назначает PostgreSQL; Hibernate читает его после INSERT.
+    @Generated(event = EventType.INSERT)
+    @Column(name = "created_at", nullable = false, insertable = false, updatable = false)
     private LocalDateTime createdAt;
+
+    @Column(columnDefinition = "text")
     private String comment;
 
     public FuneralRequest() {
@@ -21,7 +58,7 @@ public class FuneralRequest {
 
     public FuneralRequest(
             Long id,
-            Long clientId,
+            Client client,
             String deceasedFullName,
             LocalDate ceremonyDate,
             CeremonyType ceremonyType,
@@ -31,7 +68,7 @@ public class FuneralRequest {
             String comment
     ) {
         this.id = id;
-        this.clientId = clientId;
+        this.client = client;
         this.deceasedFullName = deceasedFullName;
         this.ceremonyDate = ceremonyDate;
         this.ceremonyType = ceremonyType;
@@ -49,12 +86,12 @@ public class FuneralRequest {
         this.id = id;
     }
 
-    public Long getClientId() {
-        return clientId;
+    public Client getClient() {
+        return client;
     }
 
-    public void setClientId(Long clientId) {
-        this.clientId = clientId;
+    public void setClient(Client client) {
+        this.client = client;
     }
 
     public String getDeceasedFullName() {
@@ -117,7 +154,7 @@ public class FuneralRequest {
     public String toString() {
         return "FuneralRequest{" +
                 "id=" + id +
-                ", clientId=" + clientId +
+                ", clientId=" + (client == null ? null : client.getId()) +
                 ", deceasedFullName='" + deceasedFullName + '\'' +
                 ", ceremonyDate=" + ceremonyDate +
                 ", ceremonyType=" + ceremonyType +

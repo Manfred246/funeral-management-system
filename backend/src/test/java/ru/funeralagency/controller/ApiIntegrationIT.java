@@ -2,39 +2,38 @@ package ru.funeralagency.controller;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.junit.jupiter.api.Test;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
+import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInstance;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.web.servlet.context.ServletWebServerApplicationContext;
 import org.springframework.core.env.MapPropertySource;
-import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import ru.funeralagency.Main;
 
+import java.io.ByteArrayInputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.sql.Connection;
-import java.sql.Statement;
 import java.sql.ResultSet;
+import java.sql.Statement;
+import java.time.LocalDate;
 import java.util.Map;
 import java.util.UUID;
 
-import java.time.LocalDate;
-import java.io.ByteArrayInputStream;
-import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import static org.junit.jupiter.api.Assertions.*;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
-
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -75,6 +74,8 @@ class ApiIntegrationIT {
                 "spring.datasource.username", username,
                 "spring.datasource.password", password,
                 "spring.sql.init.mode", "never",
+                "spring.flyway.schemas", schema,
+                "spring.flyway.default-schema", schema,
                 "server.port", "0"
         );
         application.addInitializers(app -> app.getEnvironment().getPropertySources()
@@ -86,12 +87,12 @@ class ApiIntegrationIT {
 
     @BeforeEach
     void resetTestData() throws Exception {
-        for (String filename : new String[]{"drop.sql", "schema.sql", "seed.sql"}) {
-            Path script = Path.of(System.getProperty("project.root"), "database", filename);
-            try (Connection connection = dataSource.getConnection();
-                 Statement statement = connection.createStatement()) {
-                statement.execute(Files.readString(script));
-            }
+        // Схему создаёт Flyway при запуске контекста, до Hibernate validate.
+        try (Connection connection = dataSource.getConnection();
+             Statement statement = connection.createStatement()) {
+            statement.execute("TRUNCATE funeral_requests, clients RESTART IDENTITY");
+            Path seed = Path.of(System.getProperty("project.root"), "database", "seed.sql");
+            statement.execute(Files.readString(seed));
         }
     }
 

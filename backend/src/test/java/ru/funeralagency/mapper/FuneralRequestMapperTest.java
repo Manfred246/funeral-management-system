@@ -3,6 +3,7 @@ package ru.funeralagency.mapper;
 import org.junit.jupiter.api.Test;
 import ru.funeralagency.dto.FuneralRequestCreateDto;
 import ru.funeralagency.model.CeremonyType;
+import ru.funeralagency.model.Client;
 import ru.funeralagency.model.FuneralRequest;
 import ru.funeralagency.model.RequestStatus;
 
@@ -30,7 +31,7 @@ class FuneralRequestMapperTest {
 
         FuneralRequest request = mapper.toEntity(dto);
 
-        assertEquals(4L, request.getClientId());
+        assertNull(request.getClient());
         assertEquals(dto.getDeceasedFullName(), request.getDeceasedFullName());
         assertNull(request.getId());
         assertNull(request.getStatus());
@@ -43,7 +44,7 @@ class FuneralRequestMapperTest {
         LocalDateTime createdAt = LocalDateTime.of(2026, 9, 22, 10, 0);
         FuneralRequest request = new FuneralRequest(
                 8L,
-                4L,
+                new Client(4L, "Клиент", "+79991234567", null),
                 "Иванов Иван Иванович",
                 LocalDate.of(2027, 2, 1),
                 CeremonyType.CREMATION,
@@ -56,6 +57,7 @@ class FuneralRequestMapperTest {
         var response = mapper.toResponseDto(request);
 
         assertEquals(8L, response.getId());
+        assertEquals(4L, response.getClientId());
         assertEquals(RequestStatus.NEW, response.getStatus());
         assertEquals(createdAt, response.getCreatedAt());
     }

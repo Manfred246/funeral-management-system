@@ -13,7 +13,6 @@ import java.util.List;
 public class FuneralRequestMapper {
     public FuneralRequest toEntity(FuneralRequestCreateDto dto) {
         FuneralRequest request = new FuneralRequest();
-        request.setClientId(dto.getClientId());
         request.setDeceasedFullName(dto.getDeceasedFullName());
         request.setCeremonyDate(dto.getCeremonyDate());
         request.setCeremonyType(dto.getCeremonyType());
@@ -24,7 +23,6 @@ public class FuneralRequestMapper {
 
     public FuneralRequest toEntity(FuneralRequestUpdateDto dto) {
         FuneralRequest request = new FuneralRequest();
-        request.setClientId(dto.getClientId());
         request.setDeceasedFullName(dto.getDeceasedFullName());
         request.setCeremonyDate(dto.getCeremonyDate());
         request.setCeremonyType(dto.getCeremonyType());
@@ -36,7 +34,7 @@ public class FuneralRequestMapper {
 
     public FuneralRequestResponseDto toResponseDto(FuneralRequest request) {
         return new FuneralRequestResponseDto(
-                request.getId(), request.getClientId(), request.getDeceasedFullName(),
+                request.getId(), request.getClient().getId(), request.getDeceasedFullName(),
                 request.getCeremonyDate(), request.getCeremonyType(), request.getStatus(),
                 request.getPrice(), request.getCreatedAt(), request.getComment()
         );
