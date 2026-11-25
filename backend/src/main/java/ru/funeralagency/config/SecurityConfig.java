@@ -52,6 +52,12 @@ public class SecurityConfig {
                                 .hasAnyRole("MANAGER", "ADMIN")
                         .requestMatchers(HttpMethod.DELETE, "/api/requests/*/tags/*")
                                 .hasAnyRole("MANAGER", "ADMIN")
+                        .requestMatchers(HttpMethod.POST, "/api/requests/*/notes")
+                                .hasAnyRole("MANAGER", "ADMIN")
+                        .requestMatchers(HttpMethod.PUT, "/api/requests/*/notes/*")
+                                .hasAnyRole("MANAGER", "ADMIN")
+                        .requestMatchers(HttpMethod.DELETE, "/api/requests/*/notes/*")
+                                .hasAnyRole("MANAGER", "ADMIN")
                         .requestMatchers(HttpMethod.GET, "/api/requests", "/api/requests/**", "/api/statistics",
                                 "/api/clients", "/api/clients/**").hasAnyRole("VIEWER", "MANAGER", "ADMIN")
                         .requestMatchers(HttpMethod.POST, "/api/requests", "/api/requests/*/restore", "/api/clients")

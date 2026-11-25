@@ -23,6 +23,9 @@ import ru.funeralagency.Main;
 import ru.funeralagency.service.FuneralRequestService;
 import ru.funeralagency.service.AuthService;
 import ru.funeralagency.service.TagService;
+import ru.funeralagency.service.RequestNoteService;
+import ru.funeralagency.model.User;
+import ru.funeralagency.exception.EntityNotFoundException;
 import ru.funeralagency.model.Tag;
 import ru.funeralagency.exception.BusinessException;
 import org.hibernate.SessionFactory;
@@ -105,7 +108,7 @@ class JpaRepositoriesIT {
     @BeforeEach
     void resetDemoData() throws Exception {
         try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
-            statement.execute("TRUNCATE funeral_request_tags, tags, funeral_requests, clients, refresh_sessions, user_roles, users RESTART IDENTITY");
+            statement.execute("TRUNCATE request_notes, funeral_request_tags, tags, funeral_requests, clients, refresh_sessions, user_roles, users RESTART IDENTITY");
             statement.execute("DELETE FROM ceremony_types WHERE id NOT IN (1, 2)");
             statement.execute("UPDATE ceremony_types SET enabled = true, name = CASE id WHEN 1 THEN 'Захоронение' ELSE 'Кремация' END");
             statement.execute("ALTER TABLE ceremony_types ALTER COLUMN id RESTART WITH 3");
@@ -126,9 +129,9 @@ class JpaRepositoriesIT {
     }
 
     @Test
-    void flywayCreatesV1ThroughV5AndDoesNotRepeatThem() {
+    void flywayCreatesV1ThroughV6AndDoesNotRepeatThem() {
         Flyway flyway = context.getBean(Flyway.class);
-        assertEquals("5", flyway.info().current().getVersion().getVersion());
+        assertEquals("6", flyway.info().current().getVersion().getVersion());
         assertEquals("SQL", flyway.info().current().getType().name());
         assertEquals(0, flyway.migrate().migrationsExecuted);
         assertEquals(6, clients.count());
@@ -486,6 +489,81 @@ class JpaRepositoriesIT {
         archived.setPrice(new BigDecimal("300.00"));
         archived.setArchived(true);
         return requests.saveAllAndFlush(List.of(first, second, archived));
+    }
+
+    @Test
+    void notesCrudScopesByRequestKeepsAuthorAndDeletesWithRequest() throws Exception {
+        User author = new User();
+        author.setLogin("note-author");
+        author.setName("Автор заметок");
+        author.setPasswordHash("test-hash-not-used-for-login");
+        context.getBean(UserRepository.class).saveAndFlush(author);
+        RequestNoteService service = context.getBean(RequestNoteService.class);
+        RequestNoteRepository notes = context.getBean(RequestNoteRepository.class);
+        FuneralRequest request = requests.saveAndFlush(newRequest());
+        FuneralRequest other = requests.saveAndFlush(newRequest());
+        var first = service.create(request.getUuid(), author.getUuid(), "  Первая  ", false);
+        var pinned = service.create(request.getUuid(), author.getUuid(), "Важная", true);
+        assertNotNull(first.uuid());
+        assertEquals("Первая", first.text());
+        assertEquals(first.createdAt(), first.updatedAt());
+        assertEquals(author.getUuid(), first.authorUuid());
+        assertEquals(2, service.getAll(request.getUuid()).size());
+        assertEquals(pinned.uuid(), service.getAll(request.getUuid()).get(0).uuid());
+        assertTrue(service.getAll(other.getUuid()).isEmpty());
+        assertThrows(EntityNotFoundException.class,
+                () -> service.update(other.getUuid(), first.uuid(), "Чужая", true));
+        assertThrows(EntityNotFoundException.class, () -> service.delete(other.getUuid(), first.uuid()));
+        var updated = service.update(request.getUuid(), first.uuid(), "  Исправленная  ", true);
+        assertEquals("Исправленная", updated.text());
+        assertTrue(updated.pinned());
+        assertEquals(author.getUuid(), updated.authorUuid());
+        assertEquals(first.createdAt(), updated.createdAt());
+        assertTrue(updated.updatedAt().isAfter(first.updatedAt()));
+        var persisted = notes.findByUuidAndRequestId(first.uuid(), request.getId()).orElseThrow();
+        assertEquals(updated.text(), persisted.getText());
+        assertEquals(updated.updatedAt(), persisted.getUpdatedAt());
+        requestService.archiveByUuid(request.getUuid());
+        assertEquals(2, service.getAll(request.getUuid()).size());
+        assertThrows(BusinessException.class,
+                () -> service.create(request.getUuid(), author.getUuid(), "Новая", false));
+        assertThrows(BusinessException.class,
+                () -> service.update(request.getUuid(), first.uuid(), "Новая", false));
+        assertThrows(BusinessException.class, () -> service.delete(request.getUuid(), first.uuid()));
+        requestService.restoreByUuid(request.getUuid());
+        service.delete(request.getUuid(), first.uuid());
+        assertFalse(notes.existsById(first.uuid()));
+        assertEquals(1, service.getAll(request.getUuid()).size());
+        requestService.deletePermanentlyByUuid(request.getUuid());
+        assertEquals(0, notes.count());
+        assertTrue(context.getBean(UserRepository.class).existsById(author.getId()));
+    }
+
+    @Test
+    void notesSchemaEnforcesRequestAuthorTextAndUniqueUuid() throws Exception {
+        User author = new User();
+        author.setLogin("note-author");
+        author.setName("Автор");
+        author.setPasswordHash("test-hash");
+        context.getBean(UserRepository.class).saveAndFlush(author);
+        FuneralRequest request = requests.saveAndFlush(newRequest());
+        var created = context.getBean(RequestNoteService.class)
+                .create(request.getUuid(), author.getUuid(), "Текст", false);
+        try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
+            assertEquals("23503", assertThrows(java.sql.SQLException.class,
+                    () -> statement.execute("DELETE FROM users WHERE id = " + author.getId())).getSQLState());
+            assertEquals("23503", assertThrows(java.sql.SQLException.class,
+                    () -> statement.execute("UPDATE request_notes SET request_id = 999999")).getSQLState());
+            assertEquals("23503", assertThrows(java.sql.SQLException.class,
+                    () -> statement.execute("UPDATE request_notes SET author_id = 999999")).getSQLState());
+            assertEquals("23502", assertThrows(java.sql.SQLException.class,
+                    () -> statement.execute("UPDATE request_notes SET text = NULL")).getSQLState());
+            assertEquals("23514", assertThrows(java.sql.SQLException.class,
+                    () -> statement.execute("UPDATE request_notes SET text = '  '")).getSQLState());
+            assertEquals("23505", assertThrows(java.sql.SQLException.class,
+                    () -> statement.execute("INSERT INTO request_notes SELECT * FROM request_notes WHERE uuid = '"
+                            + created.uuid() + "'")).getSQLState());
+        }
     }
 
     @Test

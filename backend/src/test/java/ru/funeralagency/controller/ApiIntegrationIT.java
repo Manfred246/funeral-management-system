@@ -98,7 +98,7 @@ class ApiIntegrationIT {
         // Схему создаёт Flyway при запуске контекста, до Hibernate validate.
         try (Connection connection = dataSource.getConnection();
              Statement statement = connection.createStatement()) {
-            statement.execute("TRUNCATE funeral_request_tags, tags, funeral_requests, clients, refresh_sessions, user_roles, users RESTART IDENTITY");
+            statement.execute("TRUNCATE request_notes, funeral_request_tags, tags, funeral_requests, clients, refresh_sessions, user_roles, users RESTART IDENTITY");
             Path seed = Path.of(System.getProperty("project.root"), "database", "seed.sql");
             statement.execute(Files.readString(seed));
             statement.execute("DELETE FROM ceremony_types WHERE id NOT IN (1, 2)");
@@ -138,6 +138,40 @@ class ApiIntegrationIT {
             throw new IllegalStateException("Для PostgreSQL-тестов задайте " + name);
         }
         return value;
+    }
+
+    @Test
+    void notesApiPersistsCurrentAuthorAndRejectsAnotherRequestAndArchivedMutations() throws Exception {
+        var requests = context.getBean(FuneralRequestRepository.class);
+        var first = requests.findById(1L).orElseThrow();
+        var second = requests.findById(2L).orElseThrow();
+        var admin = context.getBean(UserRepository.class).findAll().get(0);
+        String path = "/api/requests/" + first.getUuid() + "/notes";
+        String created = mockMvc.perform(post(path).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"text\":\"  Связаться с клиентом  \",\"pinned\":true}"))
+                .andExpect(status().isCreated()).andExpect(jsonPath("$.text").value("Связаться с клиентом"))
+                .andExpect(jsonPath("$.authorUuid").value(admin.getUuid().toString()))
+                .andExpect(jsonPath("$.author").doesNotExist())
+                .andReturn().getResponse().getContentAsString();
+        String noteUuid = objectMapper.readTree(created).get("uuid").asText();
+        String otherPath = "/api/requests/" + second.getUuid() + "/notes/" + noteUuid;
+        mockMvc.perform(put(otherPath).contentType(MediaType.APPLICATION_JSON).content("{\"text\":\"Чужая\"}"))
+                .andExpect(status().isNotFound());
+        mockMvc.perform(delete(otherPath)).andExpect(status().isNotFound());
+        mockMvc.perform(put(path + "/" + noteUuid).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"text\":\"  Готово  \",\"pinned\":false}"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.text").value("Готово"))
+                .andExpect(jsonPath("$.pinned").value(false));
+        mockMvc.perform(delete("/api/requests/" + first.getUuid())).andExpect(status().isNoContent());
+        mockMvc.perform(get(path)).andExpect(status().isOk()).andExpect(jsonPath("$[0].text").value("Готово"));
+        mockMvc.perform(post(path).contentType(MediaType.APPLICATION_JSON).content("{\"text\":\"Новая\"}"))
+                .andExpect(status().isConflict());
+        mockMvc.perform(put(path + "/" + noteUuid).contentType(MediaType.APPLICATION_JSON).content("{\"text\":\"Новая\"}"))
+                .andExpect(status().isConflict());
+        mockMvc.perform(delete(path + "/" + noteUuid)).andExpect(status().isConflict());
+        mockMvc.perform(post("/api/requests/" + first.getUuid() + "/restore")).andExpect(status().isOk());
+        mockMvc.perform(delete(path + "/" + noteUuid)).andExpect(status().isNoContent());
+        mockMvc.perform(get(path)).andExpect(status().isOk()).andExpect(jsonPath("$").isEmpty());
     }
 
     @Test

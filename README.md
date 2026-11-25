@@ -35,6 +35,7 @@ createdb -h localhost -p 5432 -U postgres -W funeral_management
 а `V3__create_security_tables.sql` создаёт users, user_roles и refresh_sessions.
 `V4__manage_ceremony_types.sql` добавляет code/enabled существующему справочнику типов церемонии.
 `V5__create_tags.sql` создаёт tags и таблицу связей funeral_request_tags; прежние данные не изменяются.
+`V6__create_request_notes.sql` добавляет заметки заявок с автором из users.
 Hibernate работает с `spring.jpa.hibernate.ddl-auto=validate` и только проверяет mapping.
 
 Для демонстрационных данных после первого успешного запуска backend можно выполнить:
@@ -497,6 +498,30 @@ Legacy `/search`, `/filter`, `/sort` не получают отдельного 
 Detail и непагинируемые legacy-запросы загружают tags через отдельный EntityGraph.
 Интеграционный тест PostgreSQL проверяет страницу с COUNT и одним batch SELECT тегов.
 
+## Заметки заявок
+
+| Endpoint | Доступ | Результат |
+|---|---|---|
+| GET `/api/requests/{uuid}/notes` | VIEWER/MANAGER/ADMIN | Массив заметок |
+| POST `/api/requests/{uuid}/notes` | MANAGER/ADMIN | 201, DTO и Location |
+| PUT `/api/requests/{uuid}/notes/{noteUuid}` | MANAGER/ADMIN | 200, обновлённый DTO |
+| DELETE `/api/requests/{uuid}/notes/{noteUuid}` | MANAGER/ADMIN | 204 |
+
+POST и PUT принимают `{"text":"Связаться с клиентом","pinned":true}`.
+Текст хранится как обычная строка: пробелы по краям удаляются, пустой текст даёт 400.
+`pinned` можно менять; отсутствующее поле означает false.
+Список сначала возвращает закреплённые заметки, затем более новые; UUID разрешает равенство времени.
+DTO содержит uuid, authorUuid, authorName, text, pinned, createdAt, updatedAt.
+Автор определяется authenticated principal при создании, через JSON его назначить нельзя.
+Редактирование сохраняет первоначального автора и createdAt; updatedAt обновляется с точностью до микросекунд.
+MANAGER/ADMIN могут изменять заметки других авторов.
+
+UUID заметки — её primary key; request_id/author_id ссылаются на существующие
+funeral_requests/users. Заметка другого request, неизвестная заметка или заявка дают 404.
+Для архивной заявки GET разрешён, POST/PUT/DELETE возвращают 409.
+Permanent delete заявки удаляет её заметки, сохраняя пользователей.
+Без JWT возвращается 401, при недостаточных правах — 403.
+
 ## Бизнес-правила
 
 - новая заявка создаётся со статусом `NEW`;
@@ -540,9 +565,11 @@ mvn clean package
 Интеграционные тесты требуют реальную PostgreSQL и переменные `TEST_DB_*`.
 Они используют отдельные временные схемы, Flyway запускается до Hibernate validate;
 таблицы `public` не изменяются. Проверяются V1 на пустой схеме, baseline схемы КР №1
-с сохранением данных и применением V2–V5, JPA CRUD, поиск, фильтры, сортировка и текущий REST API.
+с сохранением данных и применением V2–V6, JPA CRUD, поиск, фильтры, сортировка и текущий REST API.
 Для тегов проверяются FK/уникальность, идемпотентность связей, изменение version,
 сохранение тегов при удалении заявки, tag-фильтр с пагинацией и batch fetching.
+Для заметок проверяются CRUD, автор, принадлежность заявке, архивирование,
+FK/уникальность/непустой текст и удаление вместе с заявкой.
 Пользователь тестовой БД должен иметь право создавать и удалять тестовые схемы:
 
 ```powershell
