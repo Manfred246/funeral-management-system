@@ -5,9 +5,9 @@ services:
     container_name: funeral-postgres
 
     environment:
-      POSTGRES_DB: funeral_management
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: ${POSTGRES_DB:-funeral_management}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in environment or .env}
 
     volumes:
       - funeral-postgres-data:/var/lib/postgresql/data
@@ -18,7 +18,7 @@ services:
       test:
         [
           "CMD-SHELL",
-          "pg_isready -U postgres -d funeral_management"
+          "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""
         ]
       interval: 5s
       timeout: 5s
@@ -33,12 +33,23 @@ services:
     container_name: funeral-backend
 
     environment:
-      DB_URL: jdbc:postgresql://postgres:5432/funeral_management
-      DB_USERNAME: postgres
-      DB_PASSWORD: postgres
+      DB_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-funeral_management}
+      DB_USERNAME: ${POSTGRES_USER:-postgres}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in environment or .env}
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET before starting backend}
+      APP_ADMIN_LOGIN: ${APP_ADMIN_LOGIN:-}
+      APP_ADMIN_PASSWORD: ${APP_ADMIN_PASSWORD:-}
+      APP_ADMIN_NAME: ${APP_ADMIN_NAME:-}
 
     ports:
-      - "8080:8080"
+      - "${BACKEND_PORT:-8080}:8080"
+
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "--show-error", "http://localhost:8080/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 60s
 
     depends_on:
       postgres:

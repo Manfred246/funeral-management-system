@@ -3,9 +3,10 @@ package ru.funeralagency.validation;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
-import ru.funeralagency.exception.ValidationException;
 import ru.funeralagency.exception.BusinessException;
+import ru.funeralagency.exception.ValidationException;
 import ru.funeralagency.model.CeremonyType;
+import ru.funeralagency.model.Client;
 import ru.funeralagency.model.FuneralRequest;
 import ru.funeralagency.model.RequestStatus;
 
@@ -109,10 +110,10 @@ class FuneralRequestValidationRulesTest {
     private FuneralRequest validRequest() {
         return new FuneralRequest(
                 1L,
-                1L,
+                new Client(1L, "Клиент", "+79991234567", null),
                 "Иванов Иван Иванович",
                 LocalDate.now().plusDays(1),
-                CeremonyType.BURIAL,
+                new CeremonyType(1L, "BURIAL", "Захоронение", true),
                 RequestStatus.NEW,
                 new BigDecimal("10000.00"),
                 LocalDateTime.now(),
@@ -140,12 +141,12 @@ class FuneralRequestValidationRulesTest {
     void rejectsMissingRequiredFields() {
         assertThrows(ValidationException.class, () -> FuneralRequestValidationRules.validate(null));
         FuneralRequest request = validRequest();
-        request.setClientId(0L);
+        request.setClient(new Client(0L, "Клиент", "+79991234567", null));
         assertThrows(ValidationException.class, () -> FuneralRequestValidationRules.validate(request));
-        request.setClientId(1L);
+        request.setClient(new Client(1L, "Клиент", "+79991234567", null));
         request.setCeremonyType(null);
         assertThrows(ValidationException.class, () -> FuneralRequestValidationRules.validate(request));
-        request.setCeremonyType(CeremonyType.BURIAL);
+        request.setCeremonyType(new CeremonyType(1L, "BURIAL", "Захоронение", true));
         request.setPrice(null);
         assertThrows(ValidationException.class, () -> FuneralRequestValidationRules.validate(request));
     }

@@ -1,5 +1,9 @@
 package ru.funeralagency.controller;
 
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import jakarta.validation.Valid;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ContentDisposition;
 import org.springframework.http.HttpHeaders;
@@ -17,16 +21,20 @@ import org.springframework.web.bind.annotation.RestController;
 import ru.funeralagency.dto.FuneralRequestCreateDto;
 import ru.funeralagency.dto.FuneralRequestResponseDto;
 import ru.funeralagency.dto.FuneralRequestUpdateDto;
+import ru.funeralagency.dto.FuneralRequestFilterDto;
+import ru.funeralagency.dto.FuneralRequestPageDto;
+import ru.funeralagency.dto.TagDto;
 import ru.funeralagency.mapper.FuneralRequestMapper;
-import ru.funeralagency.model.CeremonyType;
 import ru.funeralagency.model.FuneralRequest;
 import ru.funeralagency.model.RequestStatus;
 import ru.funeralagency.service.ExcelExporter;
 import ru.funeralagency.service.FuneralRequestService;
 
 import java.net.URI;
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/requests")
@@ -51,37 +59,97 @@ public class FuneralRequestController {
     }
 
     @PostMapping
+    @ApiResponse(responseCode = "201", description = "Запись создана")
     public ResponseEntity<FuneralRequestResponseDto> create(
-            @RequestBody FuneralRequestCreateDto dto
+            @Valid @RequestBody FuneralRequestCreateDto dto
     ) {
-        FuneralRequest created = requestService.create(requestMapper.toEntity(dto));
+        FuneralRequest created = requestService.create(
+                requestMapper.toEntity(dto), dto.getClientId(), dto.getCeremonyTypeId());
         return ResponseEntity
-                .created(URI.create("/api/requests/" + created.getId()))
+                .created(URI.create("/api/requests/" + created.getUuid()))
                 .body(requestMapper.toResponseDto(created));
     }
 
     @GetMapping
-    public List<FuneralRequestResponseDto> findAll() {
-        return requestMapper.toResponseDtoList(requestService.findAll());
-    }
-
-    @GetMapping("/{id}")
-    public FuneralRequestResponseDto findById(@PathVariable Long id) {
-        return requestMapper.toResponseDto(requestService.findById(id));
-    }
-
-    @PutMapping("/{id}")
-    public FuneralRequestResponseDto update(
-            @PathVariable Long id,
-            @RequestBody FuneralRequestUpdateDto dto
+    public FuneralRequestPageDto findAll(
+            @RequestParam(required = false) String q,
+            @RequestParam(required = false) Long client,
+            @RequestParam(required = false) Long ceremonyTypeId,
+            @RequestParam(required = false) RequestStatus status,
+            @RequestParam(required = false) Boolean urgent,
+            @RequestParam(required = false) Integer priority,
+            @RequestParam(required = false) Long tag,
+            @RequestParam(defaultValue = "false") boolean archived,
+            @RequestParam(required = false) BigDecimal minPrice,
+            @RequestParam(required = false) BigDecimal maxPrice,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(defaultValue = "createdAt,desc") String sort
     ) {
-        FuneralRequest updated = requestService.update(id, requestMapper.toEntity(dto));
+        FuneralRequestFilterDto filter = new FuneralRequestFilterDto();
+        filter.setQ(q);
+        filter.setClient(client);
+        filter.setCeremonyTypeId(ceremonyTypeId);
+        filter.setStatus(status);
+        filter.setUrgent(urgent);
+        filter.setPriority(priority);
+        filter.setTag(tag);
+        filter.setArchived(archived);
+        filter.setMinPrice(minPrice);
+        filter.setMaxPrice(maxPrice);
+        return requestService.findPage(filter, page, size, sort);
+    }
+
+    @GetMapping("/{uuid}")
+    public FuneralRequestResponseDto getByUuid(@PathVariable UUID uuid) {
+        return requestMapper.toResponseDto(requestService.getByUuid(uuid));
+    }
+
+    @GetMapping("/{uuid}/tags")
+    public List<TagDto> getTags(@PathVariable UUID uuid) {
+        return requestService.getTagsByUuid(uuid);
+    }
+
+    @PostMapping("/{uuid}/tags/{tagId}")
+    @ApiResponse(responseCode = "204", description = "Операция выполнена", content = @Content)
+    public ResponseEntity<Void> addTag(@PathVariable UUID uuid, @PathVariable Long tagId) {
+        requestService.addTagByUuid(uuid, tagId);
+        return ResponseEntity.noContent().build();
+    }
+
+    @DeleteMapping("/{uuid}/tags/{tagId}")
+    @ApiResponse(responseCode = "204", description = "Операция выполнена", content = @Content)
+    public ResponseEntity<Void> removeTag(@PathVariable UUID uuid, @PathVariable Long tagId) {
+        requestService.removeTagByUuid(uuid, tagId);
+        return ResponseEntity.noContent().build();
+    }
+
+    @PutMapping("/{uuid}")
+    public FuneralRequestResponseDto update(
+            @PathVariable UUID uuid,
+            @Valid @RequestBody FuneralRequestUpdateDto dto
+    ) {
+        FuneralRequest updated = requestService.updateByUuid(
+                uuid, requestMapper.toEntity(dto), dto.getClientId(), dto.getCeremonyTypeId(), dto.getUrgent(), dto.getVersion());
         return requestMapper.toResponseDto(updated);
     }
 
-    @DeleteMapping("/{id}")
-    public ResponseEntity<Void> deleteById(@PathVariable Long id) {
-        requestService.deleteById(id);
+    @DeleteMapping("/{uuid}")
+    @ApiResponse(responseCode = "204", description = "Операция выполнена", content = @Content)
+    public ResponseEntity<Void> archive(@PathVariable UUID uuid) {
+        requestService.archiveByUuid(uuid);
+        return ResponseEntity.noContent().build();
+    }
+
+    @PostMapping("/{uuid}/restore")
+    public FuneralRequestResponseDto restore(@PathVariable UUID uuid) {
+        return requestMapper.toResponseDto(requestService.restoreByUuid(uuid));
+    }
+
+    @DeleteMapping("/{uuid}/permanent")
+    @ApiResponse(responseCode = "204", description = "Операция выполнена", content = @Content)
+    public ResponseEntity<Void> deletePermanently(@PathVariable UUID uuid) {
+        requestService.deletePermanentlyByUuid(uuid);
         return ResponseEntity.noContent().build();
     }
 
@@ -96,7 +164,7 @@ public class FuneralRequestController {
     @GetMapping("/filter")
     public List<FuneralRequestResponseDto> filter(
             @RequestParam(required = false) RequestStatus status,
-            @RequestParam(required = false) CeremonyType ceremonyType,
+            @RequestParam(required = false) String ceremonyType,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
             LocalDate dateFrom,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
@@ -116,6 +184,8 @@ public class FuneralRequestController {
     }
 
     @GetMapping("/export")
+    @ApiResponse(responseCode = "200", content = @Content(mediaType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            schema = @Schema(type = "string", format = "binary")))
     public ResponseEntity<byte[]> export() {
         byte[] content = excelExporter.export(requestService.findAll());
         ContentDisposition disposition = ContentDisposition.attachment()

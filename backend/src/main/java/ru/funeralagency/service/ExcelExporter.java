@@ -8,8 +8,8 @@ import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.ss.usermodel.Sheet;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.springframework.stereotype.Component;
-import ru.funeralagency.model.FuneralRequest;
 import ru.funeralagency.exception.BusinessException;
+import ru.funeralagency.model.FuneralRequest;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -79,7 +79,7 @@ public class ExcelExporter {
             CellStyle dateTimeStyle
     ) {
         setNumericCell(row, 0, request.getId());
-        setNumericCell(row, 1, request.getClientId());
+        setNumericCell(row, 1, request.getClient() == null ? null : request.getClient().getId());
         setTextCell(row, 2, request.getDeceasedFullName());
 
         if (request.getCeremonyDate() != null) {
@@ -87,7 +87,7 @@ public class ExcelExporter {
             ceremonyDate.setCellValue(request.getCeremonyDate());
             ceremonyDate.setCellStyle(dateStyle);
         }
-        setTextCell(row, 4, enumName(request.getCeremonyType()));
+        setTextCell(row, 4, request.getCeremonyType() == null ? "" : request.getCeremonyType().getCode());
         setTextCell(row, 5, enumName(request.getStatus()));
         if (request.getPrice() != null) {
             row.createCell(6).setCellValue(request.getPrice().doubleValue());

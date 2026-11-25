@@ -1,18 +1,30 @@
 package ru.funeralagency.dto;
 
-import ru.funeralagency.model.CeremonyType;
+import io.swagger.v3.oas.annotations.media.Schema;
+
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Positive;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
 
 public class FuneralRequestCreateDto {
 
+    @Schema(requiredMode = Schema.RequiredMode.REQUIRED)
     private Long clientId;
+    @Schema(requiredMode = Schema.RequiredMode.REQUIRED)
     private String deceasedFullName;
+    @Schema(requiredMode = Schema.RequiredMode.REQUIRED)
     private LocalDate ceremonyDate;
-    private CeremonyType ceremonyType;
+
+    @NotNull(message = "Тип церемонии обязателен")
+    @Positive(message = "ID типа церемонии должен быть положительным")
+    private Long ceremonyTypeId;
+
+    @Schema(requiredMode = Schema.RequiredMode.REQUIRED)
     private BigDecimal price;
     private String comment;
+    private boolean urgent;
 
     public FuneralRequestCreateDto() {
     }
@@ -21,14 +33,14 @@ public class FuneralRequestCreateDto {
             Long clientId,
             String deceasedFullName,
             LocalDate ceremonyDate,
-            CeremonyType ceremonyType,
+            Long ceremonyTypeId,
             BigDecimal price,
             String comment
     ) {
         this.clientId = clientId;
         this.deceasedFullName = deceasedFullName;
         this.ceremonyDate = ceremonyDate;
-        this.ceremonyType = ceremonyType;
+        this.ceremonyTypeId = ceremonyTypeId;
         this.price = price;
         this.comment = comment;
     }
@@ -57,12 +69,12 @@ public class FuneralRequestCreateDto {
         this.ceremonyDate = ceremonyDate;
     }
 
-    public CeremonyType getCeremonyType() {
-        return ceremonyType;
+    public Long getCeremonyTypeId() {
+        return ceremonyTypeId;
     }
 
-    public void setCeremonyType(CeremonyType ceremonyType) {
-        this.ceremonyType = ceremonyType;
+    public void setCeremonyTypeId(Long ceremonyTypeId) {
+        this.ceremonyTypeId = ceremonyTypeId;
     }
 
     public BigDecimal getPrice() {
@@ -79,5 +91,13 @@ public class FuneralRequestCreateDto {
 
     public void setComment(String comment) {
         this.comment = comment;
+    }
+
+    public boolean isUrgent() {
+        return urgent;
+    }
+
+    public void setUrgent(boolean urgent) {
+        this.urgent = urgent;
     }
 }

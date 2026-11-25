@@ -1,27 +1,105 @@
 package ru.funeralagency.model;
 
+import jakarta.persistence.Column;
+import jakarta.persistence.Convert;
+import jakarta.persistence.Entity;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.JoinTable;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.ManyToMany;
+import jakarta.persistence.ManyToOne;
+import jakarta.persistence.Table;
+import jakarta.persistence.Version;
+import org.hibernate.annotations.Generated;
+import org.hibernate.annotations.BatchSize;
+import org.hibernate.generator.EventType;
+
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.UUID;
+import java.util.Set;
+import java.util.HashSet;
 
+@Entity
+@Table(name = "funeral_requests")
 public class FuneralRequest {
 
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
-    private Long clientId;
+
+    @Column(nullable = false, unique = true, updatable = false)
+    private UUID uuid;
+
+    // INSERT-триггер принимает код CSV или генерирует его; Hibernate получает итоговое значение.
+    @Generated(event = EventType.INSERT, writable = true)
+    @Column(name = "request_code", nullable = false, unique = true, updatable = false, length = 64)
+    private String requestCode;
+
+    @ManyToOne(optional = false)
+    @JoinColumn(name = "client_id", nullable = false)
+    private Client client;
+
+    @Column(name = "deceased_full_name", nullable = false, length = 255)
     private String deceasedFullName;
+
+    @Column(name = "ceremony_date", nullable = false)
     private LocalDate ceremonyDate;
+
+    @ManyToOne(optional = false)
+    @JoinColumn(name = "ceremony_type_id", nullable = false)
     private CeremonyType ceremonyType;
+
+    @Convert(converter = RequestStatusConverter.class)
+    @Column(name = "status_id", nullable = false)
     private RequestStatus status;
+
+    @Column(nullable = false, precision = 12, scale = 2)
     private BigDecimal price;
+
+    @Column(nullable = false)
+    private boolean urgent;
+
+    @Column(nullable = false)
+    private Integer priority;
+
+    @Column(nullable = false)
+    private boolean archived;
+
+    @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
+
+    @Column(name = "updated_at", nullable = false)
+    private LocalDateTime updatedAt;
+
+    @Version
+    @Column(nullable = false)
+    private Long version;
+
+    @Column(columnDefinition = "text")
     private String comment;
+
+    @ManyToMany(fetch = FetchType.LAZY)
+    @JoinTable(name = "funeral_request_tags",
+            joinColumns = @JoinColumn(name = "funeral_request_id"),
+            inverseJoinColumns = @JoinColumn(name = "tag_id"))
+    @BatchSize(size = 100)
+    private Set<Tag> tags = new HashSet<>();
 
     public FuneralRequest() {
     }
 
+    public Set<Tag> getTags() {
+        return tags;
+    }
+
     public FuneralRequest(
             Long id,
-            Long clientId,
+            Client client,
             String deceasedFullName,
             LocalDate ceremonyDate,
             CeremonyType ceremonyType,
@@ -31,7 +109,7 @@ public class FuneralRequest {
             String comment
     ) {
         this.id = id;
-        this.clientId = clientId;
+        this.client = client;
         this.deceasedFullName = deceasedFullName;
         this.ceremonyDate = ceremonyDate;
         this.ceremonyType = ceremonyType;
@@ -49,12 +127,68 @@ public class FuneralRequest {
         this.id = id;
     }
 
-    public Long getClientId() {
-        return clientId;
+    public UUID getUuid() {
+        return uuid;
     }
 
-    public void setClientId(Long clientId) {
-        this.clientId = clientId;
+    public void setUuid(UUID uuid) {
+        this.uuid = uuid;
+    }
+
+    public String getRequestCode() {
+        return requestCode;
+    }
+
+    public void setRequestCode(String requestCode) {
+        this.requestCode = requestCode;
+    }
+
+    public boolean isUrgent() {
+        return urgent;
+    }
+
+    public void setUrgent(boolean urgent) {
+        this.urgent = urgent;
+    }
+
+    public Integer getPriority() {
+        return priority;
+    }
+
+    public void setPriority(Integer priority) {
+        this.priority = priority;
+    }
+
+    public boolean isArchived() {
+        return archived;
+    }
+
+    public void setArchived(boolean archived) {
+        this.archived = archived;
+    }
+
+    public LocalDateTime getUpdatedAt() {
+        return updatedAt;
+    }
+
+    public void setUpdatedAt(LocalDateTime updatedAt) {
+        this.updatedAt = updatedAt;
+    }
+
+    public Long getVersion() {
+        return version;
+    }
+
+    public void setVersion(Long version) {
+        this.version = version;
+    }
+
+    public Client getClient() {
+        return client;
+    }
+
+    public void setClient(Client client) {
+        this.client = client;
     }
 
     public String getDeceasedFullName() {
@@ -117,7 +251,7 @@ public class FuneralRequest {
     public String toString() {
         return "FuneralRequest{" +
                 "id=" + id +
-                ", clientId=" + clientId +
+                ", clientId=" + (client == null ? null : client.getId()) +
                 ", deceasedFullName='" + deceasedFullName + '\'' +
                 ", ceremonyDate=" + ceremonyDate +
                 ", ceremonyType=" + ceremonyType +

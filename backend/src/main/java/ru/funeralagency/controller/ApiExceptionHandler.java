@@ -1,19 +1,28 @@
 package ru.funeralagency.controller;
 
+import jakarta.persistence.OptimisticLockException;
+import jakarta.persistence.PersistenceException;
 import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataAccessException;
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.security.core.AuthenticationException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
+import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
+import org.springframework.web.multipart.support.MissingServletRequestPartException;
 import ru.funeralagency.dto.ApiErrorResponse;
+import ru.funeralagency.filter.CorrelationIdFilter;
 import ru.funeralagency.exception.BusinessException;
-import ru.funeralagency.exception.DatabaseException;
 import ru.funeralagency.exception.EntityNotFoundException;
 import ru.funeralagency.exception.ValidationException;
 
@@ -23,6 +32,26 @@ import java.time.Instant;
 @RestControllerAdvice
 public class ApiExceptionHandler {
     private static final Logger logger = LoggerFactory.getLogger(ApiExceptionHandler.class);
+
+    @ExceptionHandler(AuthenticationException.class)
+    public ResponseEntity<ApiErrorResponse> handleAuthenticationError(HttpServletRequest request) {
+        return response(HttpStatus.UNAUTHORIZED, "Неверные учётные данные или недействительный токен", request);
+    }
+
+    @ExceptionHandler(MethodArgumentNotValidException.class)
+    public ResponseEntity<ApiErrorResponse> handleInvalidBody(
+            MethodArgumentNotValidException exception, HttpServletRequest request
+    ) {
+        var fieldError = exception.getBindingResult().getFieldError();
+        String message = fieldError == null ? "Некорректные данные запроса" : fieldError.getDefaultMessage();
+        return response(HttpStatus.BAD_REQUEST, message, request);
+    }
+
+    @ExceptionHandler({OptimisticLockingFailureException.class, OptimisticLockException.class})
+    public ResponseEntity<ApiErrorResponse> handleOptimisticConflict(HttpServletRequest request) {
+        return response(HttpStatus.CONFLICT,
+                "Запись была изменена другим пользователем. Обновите данные и повторите попытку.", request);
+    }
 
     @ExceptionHandler(ValidationException.class)
     public ResponseEntity<ApiErrorResponse> handleValidationError(
@@ -65,9 +94,14 @@ public class ApiExceptionHandler {
         );
     }
 
-    @ExceptionHandler(DatabaseException.class)
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    public ResponseEntity<ApiErrorResponse> handleIntegrityError(HttpServletRequest request) {
+        return response(HttpStatus.CONFLICT, "Операция нарушает ограничения связанных данных", request);
+    }
+
+    @ExceptionHandler({DataAccessException.class, PersistenceException.class})
     public ResponseEntity<ApiErrorResponse> handleDatabaseError(
-            DatabaseException exception, HttpServletRequest request
+            RuntimeException exception, HttpServletRequest request
     ) {
         logger.error("Ошибка при обращении к БД", exception);
         return response(HttpStatus.INTERNAL_SERVER_ERROR, "Не удалось выполнить операцию с базой данных", request);
@@ -86,6 +120,11 @@ public class ApiExceptionHandler {
             MissingServletRequestParameterException exception, HttpServletRequest request
     ) {
         return response(HttpStatus.BAD_REQUEST, "Не указан параметр: " + exception.getParameterName(), request);
+    }
+
+    @ExceptionHandler(MissingServletRequestPartException.class)
+    public ResponseEntity<ApiErrorResponse> handleMissingFile(HttpServletRequest request) {
+        return response(HttpStatus.BAD_REQUEST, "Укажите CSV файл в поле file", request);
     }
 
     @ExceptionHandler(NoResourceFoundException.class)
@@ -116,8 +155,13 @@ public class ApiExceptionHandler {
                 status.value(),
                 status.getReasonPhrase(),
                 message,
-                request.getRequestURI()
+                request.getRequestURI(),
+                (String) request.getAttribute(CorrelationIdFilter.ATTRIBUTE)
         );
-        return ResponseEntity.status(status).body(body);
+        ResponseEntity.BodyBuilder response = ResponseEntity.status(status);
+        if (status == HttpStatus.UNAUTHORIZED) {
+            response.header(HttpHeaders.WWW_AUTHENTICATE, "Bearer");
+        }
+        return response.body(body);
     }
 }

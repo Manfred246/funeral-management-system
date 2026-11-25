@@ -1,6 +1,10 @@
 package ru.funeralagency.dto;
 
-import ru.funeralagency.model.CeremonyType;
+import io.swagger.v3.oas.annotations.media.Schema;
+
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Positive;
+import jakarta.validation.constraints.PositiveOrZero;
 import ru.funeralagency.model.RequestStatus;
 
 import java.math.BigDecimal;
@@ -8,13 +12,27 @@ import java.time.LocalDate;
 
 public class FuneralRequestUpdateDto {
 
+    @Schema(requiredMode = Schema.RequiredMode.REQUIRED)
     private Long clientId;
+    @Schema(requiredMode = Schema.RequiredMode.REQUIRED)
     private String deceasedFullName;
+    @Schema(requiredMode = Schema.RequiredMode.REQUIRED)
     private LocalDate ceremonyDate;
-    private CeremonyType ceremonyType;
+
+    @NotNull(message = "Тип церемонии обязателен")
+    @Positive(message = "ID типа церемонии должен быть положительным")
+    private Long ceremonyTypeId;
+
+    @Schema(requiredMode = Schema.RequiredMode.REQUIRED)
     private RequestStatus status;
+    @Schema(requiredMode = Schema.RequiredMode.REQUIRED)
     private BigDecimal price;
     private String comment;
+    private Boolean urgent;
+
+    @NotNull(message = "Версия заявки обязательна")
+    @PositiveOrZero(message = "Версия заявки не может быть отрицательной")
+    private Long version;
 
     public FuneralRequestUpdateDto() {
     }
@@ -23,7 +41,7 @@ public class FuneralRequestUpdateDto {
             Long clientId,
             String deceasedFullName,
             LocalDate ceremonyDate,
-            CeremonyType ceremonyType,
+            Long ceremonyTypeId,
             RequestStatus status,
             BigDecimal price,
             String comment
@@ -31,7 +49,7 @@ public class FuneralRequestUpdateDto {
         this.clientId = clientId;
         this.deceasedFullName = deceasedFullName;
         this.ceremonyDate = ceremonyDate;
-        this.ceremonyType = ceremonyType;
+        this.ceremonyTypeId = ceremonyTypeId;
         this.status = status;
         this.price = price;
         this.comment = comment;
@@ -61,12 +79,12 @@ public class FuneralRequestUpdateDto {
         this.ceremonyDate = ceremonyDate;
     }
 
-    public CeremonyType getCeremonyType() {
-        return ceremonyType;
+    public Long getCeremonyTypeId() {
+        return ceremonyTypeId;
     }
 
-    public void setCeremonyType(CeremonyType ceremonyType) {
-        this.ceremonyType = ceremonyType;
+    public void setCeremonyTypeId(Long ceremonyTypeId) {
+        this.ceremonyTypeId = ceremonyTypeId;
     }
 
     public RequestStatus getStatus() {
@@ -91,5 +109,21 @@ public class FuneralRequestUpdateDto {
 
     public void setComment(String comment) {
         this.comment = comment;
+    }
+
+    public Boolean getUrgent() {
+        return urgent;
+    }
+
+    public void setUrgent(Boolean urgent) {
+        this.urgent = urgent;
+    }
+
+    public Long getVersion() {
+        return version;
+    }
+
+    public void setVersion(Long version) {
+        this.version = version;
     }
 }

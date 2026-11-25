@@ -41,7 +41,8 @@ public final class FuneralRequestValidationRules {
         if (request == null) {
             throw new ValidationException("Заявка не может быть null");
         }
-        if (request.getClientId() == null || request.getClientId() <= 0) {
+        if (request.getClient() == null || request.getClient().getId() == null
+                || request.getClient().getId() <= 0) {
             throw new ValidationException("ID клиента должен быть положительным числом");
         }
         if (!StringUtils.hasText(request.getDeceasedFullName())) {
