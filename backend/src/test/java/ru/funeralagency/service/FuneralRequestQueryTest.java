@@ -43,7 +43,7 @@ class FuneralRequestQueryTest {
 
     @BeforeEach
     void setUp() {
-        service = new FuneralRequestService(requests, clients, new FuneralRequestMapper(), ceremonyTypes, tags);
+        service = new FuneralRequestService(requests, clients, new FuneralRequestMapper(), ceremonyTypes, tags, org.mockito.Mockito.mock(ru.funeralagency.service.AuditService.class));
     }
 
     @ParameterizedTest

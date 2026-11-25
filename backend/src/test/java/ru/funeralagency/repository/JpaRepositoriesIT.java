@@ -31,6 +31,8 @@ import ru.funeralagency.dto.CsvImportMode;
 import ru.funeralagency.service.FuneralRequestCsv;
 import ru.funeralagency.service.FuneralRequestCsvService;
 import ru.funeralagency.service.AnalyticsService;
+import ru.funeralagency.service.AdminUserService;
+import ru.funeralagency.dto.AdminUserCreateDto;
 import ru.funeralagency.dto.AnalyticsSummaryDto;
 import ru.funeralagency.model.User;
 import ru.funeralagency.exception.EntityNotFoundException;
@@ -116,7 +118,7 @@ class JpaRepositoriesIT {
     @BeforeEach
     void resetDemoData() throws Exception {
         try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
-            statement.execute("TRUNCATE request_notes, funeral_request_tags, tags, funeral_requests, clients, refresh_sessions, user_roles, users RESTART IDENTITY");
+            statement.execute("TRUNCATE audit_events, request_notes, funeral_request_tags, tags, funeral_requests, clients, refresh_sessions, user_roles, users RESTART IDENTITY");
             statement.execute("DELETE FROM ceremony_types WHERE id NOT IN (1, 2)");
             statement.execute("UPDATE ceremony_types SET enabled = true, name = CASE id WHEN 1 THEN 'Захоронение' ELSE 'Кремация' END");
             statement.execute("ALTER TABLE ceremony_types ALTER COLUMN id RESTART WITH 3");
@@ -137,9 +139,9 @@ class JpaRepositoriesIT {
     }
 
     @Test
-    void flywayCreatesV1ThroughV7AndDoesNotRepeatThem() {
+    void flywayCreatesV1ThroughV8AndDoesNotRepeatThem() {
         Flyway flyway = context.getBean(Flyway.class);
-        assertEquals("7", flyway.info().current().getVersion().getVersion());
+        assertEquals("8", flyway.info().current().getVersion().getVersion());
         assertEquals("SQL", flyway.info().current().getType().name());
         assertEquals(0, flyway.migrate().migrationsExecuted);
         assertEquals(6, clients.count());
@@ -500,6 +502,55 @@ class JpaRepositoriesIT {
     }
 
     @Test
+    void concurrentDemotionsKeepOneEnabledAdmin() throws Exception {
+        AdminUserService service = context.getBean(AdminUserService.class);
+        var first = service.create(new AdminUserCreateDto("admin-one", "Первый", java.util.Set.of(Role.ADMIN), "temporary-password"));
+        var second = service.create(new AdminUserCreateDto("admin-two", "Второй", java.util.Set.of(Role.ADMIN), "temporary-password"));
+        var start = new java.util.concurrent.CountDownLatch(1);
+        var executor = java.util.concurrent.Executors.newFixedThreadPool(2);
+        try {
+            var futures = new java.util.ArrayList<java.util.concurrent.Future<Boolean>>();
+            for (UUID uuid : List.of(first.uuid(), second.uuid())) {
+                futures.add(executor.submit(() -> {
+                    start.await();
+                    try {
+                        service.changeRoles(uuid, java.util.Set.of(Role.VIEWER));
+                        return true;
+                    } catch (BusinessException expected) {
+                        return false;
+                    }
+                }));
+            }
+            start.countDown();
+            boolean firstSucceeded = futures.get(0).get(30, java.util.concurrent.TimeUnit.SECONDS);
+            boolean secondSucceeded = futures.get(1).get(30, java.util.concurrent.TimeUnit.SECONDS);
+            assertNotEquals(firstSucceeded, secondSucceeded);
+            assertEquals(1, context.getBean(UserRepository.class).countByEnabledTrueAndRolesContaining(Role.ADMIN));
+        } finally {
+            executor.shutdownNow();
+        }
+    }
+
+    @Test
+    void auditFailureRollsBackBusinessChangeInSameTransaction() throws Exception {
+        FuneralRequest request = requests.saveAndFlush(newRequest());
+        try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
+            statement.execute("ALTER TABLE audit_events ADD CONSTRAINT reject_archive_audit CHECK (event_type <> 'REQUEST_ARCHIVED')");
+        }
+        try {
+            assertThrows(DataIntegrityViolationException.class, () -> requestService.archiveByUuid(request.getUuid()));
+            var saved = requests.findByUuid(request.getUuid()).orElseThrow();
+            assertFalse(saved.isArchived());
+            assertEquals(request.getVersion(), saved.getVersion());
+            assertEquals(0, context.getBean(AuditEventRepository.class).count());
+        } finally {
+            try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
+                statement.execute("ALTER TABLE audit_events DROP CONSTRAINT reject_archive_audit");
+            }
+        }
+    }
+
+    @Test
     void analyticsAggregatesAllRequestsAndGroupsWithoutLoadingEntities() {
         requests.deleteAllInBatch();
         CeremonyType custom = context.getBean(CeremonyTypeRepository.class)
@@ -704,7 +755,7 @@ class JpaRepositoriesIT {
     private String csvDatabaseSnapshot() throws Exception {
         StringBuilder snapshot = new StringBuilder();
         try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
-            for (String table : List.of("funeral_requests", "clients", "ceremony_types")) {
+            for (String table : List.of("funeral_requests", "clients", "ceremony_types", "audit_events")) {
                 try (ResultSet result = statement.executeQuery("SELECT jsonb_agg(to_jsonb(t) ORDER BY id)::text FROM " + table + " t")) {
                     assertTrue(result.next());
                     snapshot.append(result.getString(1));

@@ -43,7 +43,7 @@ class FlywayBaselineIT {
                     assertNotNull(before);
                 }
             }
-            var migration = Flyway.configure().dataSource(source).schemas(schema).defaultSchema(schema).load().migrate();
+            var migration = Flyway.configure().dataSource(source).schemas(schema).defaultSchema(schema).target("7").load().migrate();
             assertEquals(1, migration.migrationsExecuted);
             try (Connection connection = source.getConnection(); Statement statement = connection.createStatement();
                  ResultSet result = statement.executeQuery("SELECT string_agg(request_code, ',' ORDER BY id) FROM funeral_requests")) {
@@ -102,7 +102,7 @@ class FlywayBaselineIT {
                 assertEquals("validate", context.getEnvironment().getProperty("spring.jpa.hibernate.ddl-auto"));
                 Flyway flyway = context.getBean(Flyway.class);
                 var applied = flyway.info().applied();
-                assertEquals(7, applied.length);
+                assertEquals(8, applied.length);
                 assertEquals("1", applied[0].getVersion().getVersion());
                 assertEquals("BASELINE", applied[0].getType().name());
                 assertEquals("2", applied[1].getVersion().getVersion());
@@ -114,6 +114,7 @@ class FlywayBaselineIT {
                 assertEquals("5", applied[4].getVersion().getVersion());
                 assertEquals("6", applied[5].getVersion().getVersion());
                 assertEquals("7", applied[6].getVersion().getVersion());
+                assertEquals("8", applied[7].getVersion().getVersion());
                 assertEquals(0, context.getBean(RequestNoteRepository.class).count());
                 assertEquals(0, context.getBean(TagRepository.class).count());
                 assertEquals(0, flyway.migrate().migrationsExecuted);

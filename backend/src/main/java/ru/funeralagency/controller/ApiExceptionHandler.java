@@ -21,6 +21,7 @@ import org.springframework.web.method.annotation.MethodArgumentTypeMismatchExcep
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 import org.springframework.web.multipart.support.MissingServletRequestPartException;
 import ru.funeralagency.dto.ApiErrorResponse;
+import ru.funeralagency.filter.CorrelationIdFilter;
 import ru.funeralagency.exception.BusinessException;
 import ru.funeralagency.exception.EntityNotFoundException;
 import ru.funeralagency.exception.ValidationException;
@@ -154,7 +155,8 @@ public class ApiExceptionHandler {
                 status.value(),
                 status.getReasonPhrase(),
                 message,
-                request.getRequestURI()
+                request.getRequestURI(),
+                (String) request.getAttribute(CorrelationIdFilter.ATTRIBUTE)
         );
         ResponseEntity.BodyBuilder response = ResponseEntity.status(status);
         if (status == HttpStatus.UNAUTHORIZED) {

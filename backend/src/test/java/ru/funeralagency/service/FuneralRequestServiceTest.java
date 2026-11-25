@@ -57,13 +57,15 @@ class FuneralRequestServiceTest {
     private CeremonyTypeRepository ceremonyTypes;
     @Mock
     private TagService tags;
+    @Mock
+    private AuditService audit;
 
     private FuneralRequestService service;
 
     @BeforeEach
     void setUp() {
         service = new FuneralRequestService(requestRepository, clientRepository,
-                new ru.funeralagency.mapper.FuneralRequestMapper(), ceremonyTypes, tags);
+                new ru.funeralagency.mapper.FuneralRequestMapper(), ceremonyTypes, tags, audit);
     }
 
     @Test
@@ -394,6 +396,29 @@ class FuneralRequestServiceTest {
         assertThrows(BusinessException.class, () -> service.changeStatusByUuid(REQUEST_UUID, next));
         assertEquals(current, existing.getStatus());
         verify(requestRepository, never()).saveAndFlush(any());
+    }
+
+    @Test
+    void requestLifecycleRecordsEventsOnlyForSuccessfulChanges() {
+        when(clientRepository.findById(1L)).thenReturn(Optional.of(client()));
+        when(ceremonyTypes.findById(1L)).thenReturn(Optional.of(new CeremonyType(1L, "BURIAL", "Захоронение", true)));
+        when(requestRepository.saveAndFlush(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        FuneralRequest created = service.create(validRequest(null, RequestStatus.NEW), 1L, 1L);
+        created.setVersion(0L); // Состояние сохранённой строки в mock, не ручное управление production version.
+        when(requestRepository.findByUuid(created.getUuid())).thenReturn(Optional.of(created));
+        service.updateByUuid(created.getUuid(), validRequest(null, RequestStatus.CONFIRMED), 1L, 1L, null, 0L);
+        service.archiveByUuid(created.getUuid());
+        service.archiveByUuid(created.getUuid());
+        service.restoreByUuid(created.getUuid());
+        service.restoreByUuid(created.getUuid());
+        service.deletePermanentlyByUuid(created.getUuid());
+        var order = org.mockito.Mockito.inOrder(audit);
+        for (var type : java.util.List.of(ru.funeralagency.model.AuditEventType.REQUEST_CREATED,
+                ru.funeralagency.model.AuditEventType.REQUEST_UPDATED, ru.funeralagency.model.AuditEventType.REQUEST_ARCHIVED,
+                ru.funeralagency.model.AuditEventType.REQUEST_RESTORED, ru.funeralagency.model.AuditEventType.REQUEST_DELETED)) {
+            order.verify(audit).record(type, "FUNERAL_REQUEST", created.getUuid());
+        }
+        org.mockito.Mockito.verifyNoMoreInteractions(audit);
     }
 
     private FuneralRequest validRequest(Long id, RequestStatus status) {

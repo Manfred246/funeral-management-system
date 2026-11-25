@@ -12,6 +12,7 @@ import org.springframework.security.web.AuthenticationEntryPoint;
 import org.springframework.security.web.access.AccessDeniedHandler;
 import org.springframework.stereotype.Component;
 import ru.funeralagency.dto.ApiErrorResponse;
+import ru.funeralagency.filter.CorrelationIdFilter;
 
 import java.io.IOException;
 import java.time.Instant;
@@ -45,6 +46,7 @@ public class SecurityErrorHandler implements AuthenticationEntryPoint, AccessDen
         response.setContentType(MediaType.APPLICATION_JSON_VALUE);
         response.setCharacterEncoding("UTF-8");
         objectMapper.writeValue(response.getOutputStream(), new ApiErrorResponse(Instant.now(), status.value(),
-                status.getReasonPhrase(), message, request.getRequestURI()));
+                status.getReasonPhrase(), message, request.getRequestURI(),
+                (String) request.getAttribute(CorrelationIdFilter.ATTRIBUTE)));
     }
 }

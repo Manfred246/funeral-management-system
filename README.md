@@ -37,6 +37,7 @@ createdb -h localhost -p 5432 -U postgres -W funeral_management
 `V5__create_tags.sql` создаёт tags и таблицу связей funeral_request_tags; прежние данные не изменяются.
 `V6__create_request_notes.sql` добавляет заметки заявок с автором из users.
 `V7__allow_imported_request_codes.sql` сохраняет коды, заменяя generated column на обычную колонку с INSERT/UPDATE-триггером.
+`V8__create_audit_events.sql` добавляет audit_events; прежние миграции и данные не изменяются.
 Hibernate работает с `spring.jpa.hibernate.ddl-auto=validate` и только проверяет mapping.
 
 Для демонстрационных данных после первого успешного запуска backend можно выполнить:
@@ -179,8 +180,8 @@ Auth timestamps хранятся в UTC. Смена пароля отзывае�
 Пять последовательных неправильных паролей блокируют последующие login, включая
 правильный пароль. Успешный вход до достижения порога обнуляет счётчик. Счётчик
 сохраняется, несмотря на ответ 401, и защищён блокировкой строки при login.
-Автоматического таймера разблокировки нет. Административный reset/unlock будет
-отдельным этапом; пользователь с ещё действующим access token может подтвердить
+Автоматического таймера разблокировки нет. ADMIN может выполнить reset/unlock через
+`/api/admin/users`; пользователь с ещё действующим access token может подтвердить
 текущий пароль и сменить его, что также сбросит счётчик.
 
 Пока passwordChangeRequired=true, разрешены login, refresh, logout, me и смена
@@ -673,6 +674,67 @@ Service получает scalar projections, а не FuneralRequest entities.
 Отключённый CeremonyType также отображается, если на него есть заявки.
 При пустой БД счётчики равны нулю, группировки — пустые массивы.
 
+## Управление пользователями ADMIN
+
+Все `/api/admin/**` доступны только ADMIN; VIEWER/MANAGER получают 403, без JWT — 401.
+Для этих endpoints также действует запрет бизнес-запросов до смены временного пароля.
+
+| Endpoint | Назначение |
+|---|---|
+| GET `/api/admin/users?page=0&size=20` | Список пользователей, максимум 100; порядок login/id |
+| POST `/api/admin/users` | Создать пользователя, 201 и безопасный user DTO |
+| PUT `/api/admin/users/{uuid}` | Изменить login/name |
+| PUT `/api/admin/users/{uuid}/roles` | Назначить непустой набор VIEWER/MANAGER/ADMIN |
+| POST `/api/admin/users/{uuid}/enable` | Включить |
+| POST `/api/admin/users/{uuid}/disable` | Отключить и отозвать refresh sessions |
+| POST `/api/admin/users/{uuid}/reset-password` | Установить временный пароль |
+| POST `/api/admin/users/{uuid}/unlock` | Обнулить failedLoginAttempts |
+
+Create принимает `login`, `name`, `roles` и `temporaryPassword`; edit — `login`, `name`;
+roles — `{"roles":["MANAGER"]}`; reset — `temporaryPassword`.
+Временный пароль задаёт ADMIN во входном запросе. Он не возвращается в ответе и не логируется;
+credential DTO скрывают его также в toString. Хранится только BCrypt-хэш.
+Общая policy Auth/Admin: минимум 8 символов, максимум 72 байта UTF-8.
+Create/reset устанавливают passwordChangeRequired=true; reset дополнительно обнуляет
+failedLoginAttempts и отзывает refresh sessions. Unlock не меняет пароль, enabled или roles.
+Login/name обрезаются по краям; login уникален с учётом регистра. Конфликт даёт 409.
+Ответы содержат uuid, login, name, roles, enabled, passwordChangeRequired, failedLoginAttempts.
+Пароля и passwordHash в ответах нет.
+
+Нельзя отключить или лишить роли последнего включённого пользователя с ADMIN.
+Изменения roles/enabled сериализуются PESSIMISTIC_WRITE-блокировкой первой строки users;
+она стабильна, так как физического удаления пользователей нет. После блокировки
+проверяется количество enabled ADMIN. Нарушение возвращает 409.
+
+## Audit и Correlation ID
+
+`GET /api/admin/audit?search=REQUEST&sort=timestamp,desc&page=0&size=20` возвращает
+page DTO. Search ищет буквальную подстроку без учёта регистра в eventType, entityType,
+description и correlationId. Sort разрешён по timestamp/eventType/entityType,
+направления asc/desc; id используется для стабильного порядка. Максимальный size — 100.
+
+AuditEvent содержит Long id, eventType, entityType, entityUuid, userId, timestamp,
+description, correlationId. Timestamp хранится в UTC (колонка created_at).
+V8 добавляет индексы created_at/id и user_id. Записываются:
+LOGIN, REQUEST_CREATED, REQUEST_UPDATED, REQUEST_ARCHIVED, REQUEST_RESTORED,
+REQUEST_DELETED, USER_CREATED, PASSWORD_RESET.
+Статус и фактические изменения тегов используют REQUEST_UPDATED.
+Повторные archive/restore/tag без изменения состояния не создают дубликат события.
+Аудит создаётся прямым вызовом AuditService в транзакции бизнес-действия, включая CSV/bulk.
+Ошибка аудита откатывает соответствующее бизнес-действие; failed login не создаёт LOGIN.
+При LOGIN actor — вошедший пользователь; при бизнес-запросах — текущий authenticated user.
+Для bootstrap/действий без HTTP actor может быть null, correlationId генерируется.
+Удаление заявки не удаляет её audit events. Описания фиксированы: пароли, хэши,
+access/refresh tokens, тексты заявок и тела запросов в аудит не передаются.
+
+Один CorrelationIdFilter выполняется перед Security. Корректный X-Correlation-Id
+имеет 1–64 ASCII-символа: `[A-Za-z0-9][A-Za-z0-9._-]{0,63}`.
+Отсутствующий или некорректный ID заменяется UUID. ID возвращается в response header
+и ErrorResponse (включая 401/403), доступен AuditService и логам через MDC.
+В logging pattern добавлен correlationId; HTTP log содержит только method/path/status,
+без query/body/Authorization. MDC очищается/восстанавливается в finally.
+Tracing framework не используется.
+
 ## Бизнес-правила
 
 - новая заявка создаётся со статусом `NEW`;
@@ -716,7 +778,7 @@ mvn clean package
 Интеграционные тесты требуют реальную PostgreSQL и переменные `TEST_DB_*`.
 Они используют отдельные временные схемы, Flyway запускается до Hibernate validate;
 таблицы `public` не изменяются. Проверяются V1 на пустой схеме, baseline схемы КР №1
-с сохранением данных и применением V2–V7, JPA CRUD, поиск, фильтры, сортировка и текущий REST API.
+с сохранением данных и применением V2–V8, JPA CRUD, поиск, фильтры, сортировка и текущий REST API.
 Для тегов проверяются FK/уникальность, идемпотентность связей, изменение version,
 сохранение тегов при удалении заявки, tag-фильтр с пагинацией и batch fetching.
 Для заметок проверяются CRUD, автор, принадлежность заявке, архивирование,
@@ -730,6 +792,11 @@ CREATE_ONLY/UPSERT, смешанные результаты и права. Postg
 Analytics-тесты проверяют DTO, totals, округление средней цены, группы, доступ всех ролей
 и компиляцию JPQL без подключения к БД. PostgreSQL-тесты проверяют реальные агрегаты,
 пустую БД, четыре SQL-запроса и отсутствие загрузки entities.
+Admin/Audit/Correlation tests проверяют права всех endpoints, BCrypt и reset/unlock,
+последнего ADMIN, audit events/search/sort/page, ID из header/генерацию, ErrorResponse,
+MDC cleanup и отсутствие секретов в ответах/аудите/HTTP log.
+PostgreSQL-сценарии дополнительно проверяют конкурентную защиту последнего ADMIN,
+атомарность аудита с бизнес-операцией и сохранение событий после удаления заявки.
 Пользователь тестовой БД должен иметь право создавать и удалять тестовые схемы:
 
 ```powershell

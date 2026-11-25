@@ -58,8 +58,12 @@ class FuneralRequestCsvTransactionTest {
         context.registerBean(ClientRepository.class, () -> clients);
         context.registerBean(CeremonyTypeRepository.class, () -> types);
         context.registerBean(TagRepository.class, () -> mock(TagRepository.class));
-        context.register(TransactionConfig.class, TagService.class, FuneralRequestMapper.class, FuneralRequestService.class,
+        context.register(TransactionConfig.class, TagService.class, FuneralRequestMapper.class,
                 FuneralRequestCsv.class, FuneralRequestCsvRowService.class, FuneralRequestCsvService.class);
+        context.registerBean(FuneralRequestService.class, () -> new FuneralRequestService(
+                context.getBean(FuneralRequestRepository.class), context.getBean(ClientRepository.class),
+                context.getBean(FuneralRequestMapper.class), context.getBean(CeremonyTypeRepository.class),
+                context.getBean(TagService.class), mock(AuditService.class)));
         context.refresh();
         csv = context.getBean(FuneralRequestCsvService.class);
     }

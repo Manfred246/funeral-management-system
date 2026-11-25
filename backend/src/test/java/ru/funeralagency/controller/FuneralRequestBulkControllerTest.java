@@ -64,6 +64,7 @@ class FuneralRequestBulkControllerTest {
     @MockitoBean private CeremonyTypeRepository types;
     @MockitoBean private TagRepository tags;
     @MockitoBean private UserRepository users;
+    @MockitoBean private ru.funeralagency.service.AuditService audit;
     private FuneralRequest first;
     private FuneralRequest second;
 

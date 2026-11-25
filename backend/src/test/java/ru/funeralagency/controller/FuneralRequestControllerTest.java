@@ -72,7 +72,7 @@ class FuneralRequestControllerTest {
     @BeforeEach
     void setUp() {
         FuneralRequestService service = new FuneralRequestService(
-                requests, clients, new FuneralRequestMapper(), ceremonyTypes, tagService);
+                requests, clients, new FuneralRequestMapper(), ceremonyTypes, tagService, org.mockito.Mockito.mock(ru.funeralagency.service.AuditService.class));
         mvc = MockMvcBuilders.standaloneSetup(
                         new FuneralRequestController(service, new FuneralRequestMapper(), exporter))
                 .setControllerAdvice(new ApiExceptionHandler()).build();

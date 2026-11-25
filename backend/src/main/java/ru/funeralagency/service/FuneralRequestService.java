@@ -19,6 +19,7 @@ import ru.funeralagency.mapper.TagMapper;
 import ru.funeralagency.model.Tag;
 import ru.funeralagency.mapper.FuneralRequestMapper;
 import ru.funeralagency.model.CeremonyType;
+import ru.funeralagency.model.AuditEventType;
 import ru.funeralagency.model.Client;
 import ru.funeralagency.model.FuneralRequest;
 import ru.funeralagency.model.RequestStatus;
@@ -49,19 +50,22 @@ public class FuneralRequestService {
     private final FuneralRequestMapper requestMapper;
     private final CeremonyTypeRepository ceremonyTypeRepository;
     private final TagService tagService;
+    private final AuditService audit;
 
     public FuneralRequestService(
             FuneralRequestRepository requestRepository,
             ClientRepository clientRepository,
             FuneralRequestMapper requestMapper,
             CeremonyTypeRepository ceremonyTypeRepository,
-            TagService tagService
+            TagService tagService,
+            AuditService audit
     ) {
         this.requestRepository = requestRepository;
         this.clientRepository = clientRepository;
         this.requestMapper = requestMapper;
         this.ceremonyTypeRepository = ceremonyTypeRepository;
         this.tagService = tagService;
+        this.audit = audit;
     }
 
     @Transactional
@@ -93,7 +97,9 @@ public class FuneralRequestService {
         request.setPriority(calculatePriority(request.isUrgent(), now, request.getCeremonyDate()));
         request.setArchived(false);
         request.setVersion(null);
-        return requestRepository.saveAndFlush(request);
+        FuneralRequest saved = requestRepository.saveAndFlush(request);
+        audit.record(AuditEventType.REQUEST_CREATED, "FUNERAL_REQUEST", saved.getUuid());
+        return saved;
     }
 
     public List<FuneralRequest> findAll() {
@@ -172,7 +178,9 @@ public class FuneralRequestService {
         LocalDateTime now = LocalDateTime.now().truncatedTo(ChronoUnit.MICROS);
         existing.setPriority(calculatePriority(existing.isUrgent(), existing.getCreatedAt(), existing.getCeremonyDate()));
         existing.setUpdatedAt(now);
-        return requestRepository.saveAndFlush(existing);
+        FuneralRequest saved = requestRepository.saveAndFlush(existing);
+        audit.record(AuditEventType.REQUEST_UPDATED, "FUNERAL_REQUEST", saved.getUuid());
+        return saved;
     }
 
     private void prepareForCreate(FuneralRequest request, Long clientId, Long ceremonyTypeId) {
@@ -242,6 +250,7 @@ public class FuneralRequestService {
         request.getTags().add(tag);
         request.setUpdatedAt(LocalDateTime.now().truncatedTo(ChronoUnit.MICROS));
         requestRepository.saveAndFlush(request);
+        audit.record(AuditEventType.REQUEST_UPDATED, "FUNERAL_REQUEST", request.getUuid());
     }
 
     @Transactional
@@ -254,6 +263,7 @@ public class FuneralRequestService {
         if (request.getTags().removeIf(existing -> existing.getId().equals(tag.getId()))) {
             request.setUpdatedAt(LocalDateTime.now().truncatedTo(ChronoUnit.MICROS));
             requestRepository.saveAndFlush(request);
+            audit.record(AuditEventType.REQUEST_UPDATED, "FUNERAL_REQUEST", request.getUuid());
         }
     }
 
@@ -265,6 +275,7 @@ public class FuneralRequestService {
             request.setStatus(status);
             request.setUpdatedAt(LocalDateTime.now().truncatedTo(ChronoUnit.MICROS));
             requestRepository.saveAndFlush(request);
+            audit.record(AuditEventType.REQUEST_UPDATED, "FUNERAL_REQUEST", request.getUuid());
         }
     }
 
@@ -275,6 +286,7 @@ public class FuneralRequestService {
             request.setArchived(true);
             request.setUpdatedAt(LocalDateTime.now().truncatedTo(ChronoUnit.MICROS));
             requestRepository.saveAndFlush(request);
+            audit.record(AuditEventType.REQUEST_ARCHIVED, "FUNERAL_REQUEST", request.getUuid());
         }
     }
 
@@ -284,7 +296,9 @@ public class FuneralRequestService {
         if (request.isArchived()) {
             request.setArchived(false);
             request.setUpdatedAt(LocalDateTime.now().truncatedTo(ChronoUnit.MICROS));
-            return requestRepository.saveAndFlush(request);
+            FuneralRequest saved = requestRepository.saveAndFlush(request);
+            audit.record(AuditEventType.REQUEST_RESTORED, "FUNERAL_REQUEST", saved.getUuid());
+            return saved;
         }
         return request;
     }
@@ -294,6 +308,7 @@ public class FuneralRequestService {
         FuneralRequest request = getByUuid(uuid);
         requestRepository.delete(request);
         requestRepository.flush();
+        audit.record(AuditEventType.REQUEST_DELETED, "FUNERAL_REQUEST", uuid);
     }
 
     public List<FuneralRequest> search(String deceasedName, Long clientId) {

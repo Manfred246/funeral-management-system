@@ -18,6 +18,7 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import ru.funeralagency.Main;
 import ru.funeralagency.model.User;
 import ru.funeralagency.model.Role;
+import ru.funeralagency.filter.CorrelationIdFilter;
 import ru.funeralagency.repository.UserRepository;
 import ru.funeralagency.security.JwtService;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -91,7 +92,7 @@ class ApiIntegrationIT {
         application.addInitializers(app -> app.getEnvironment().getPropertySources()
                 .addFirst(new MapPropertySource("test-database", settings)));
         context = (ServletWebServerApplicationContext) application.run();
-        mockMvc = MockMvcBuilders.webAppContextSetup(context).apply(springSecurity()).build();
+        mockMvc = MockMvcBuilders.webAppContextSetup(context).addFilters(context.getBean(CorrelationIdFilter.class)).apply(springSecurity()).build();
         objectMapper = context.getBean(ObjectMapper.class);
     }
 
@@ -100,7 +101,7 @@ class ApiIntegrationIT {
         // Схему создаёт Flyway при запуске контекста, до Hibernate validate.
         try (Connection connection = dataSource.getConnection();
              Statement statement = connection.createStatement()) {
-            statement.execute("TRUNCATE request_notes, funeral_request_tags, tags, funeral_requests, clients, refresh_sessions, user_roles, users RESTART IDENTITY");
+            statement.execute("TRUNCATE audit_events, request_notes, funeral_request_tags, tags, funeral_requests, clients, refresh_sessions, user_roles, users RESTART IDENTITY");
             Path seed = Path.of(System.getProperty("project.root"), "database", "seed.sql");
             statement.execute(Files.readString(seed));
             statement.execute("DELETE FROM ceremony_types WHERE id NOT IN (1, 2)");
@@ -114,7 +115,7 @@ class ApiIntegrationIT {
         admin.setPasswordHash(context.getBean(PasswordEncoder.class).encode("integration-password"));
         context.getBean(UserRepository.class).saveAndFlush(admin);
         String token = context.getBean(JwtService.class).createAccessToken(admin);
-        mockMvc = MockMvcBuilders.webAppContextSetup(context).apply(springSecurity())
+        mockMvc = MockMvcBuilders.webAppContextSetup(context).addFilters(context.getBean(CorrelationIdFilter.class)).apply(springSecurity())
                 .defaultRequest(get("/").header("Authorization", "Bearer " + token)).build();
     }
 
@@ -140,6 +141,80 @@ class ApiIntegrationIT {
             throw new IllegalStateException("Для PostgreSQL-тестов задайте " + name);
         }
         return value;
+    }
+
+    @Test
+    void adminUsersTemporaryPasswordResetUnlockAndAuditPersist() throws Exception {
+        String created = mockMvc.perform(post("/api/admin/users").header("X-Correlation-Id", "admin-create-it")
+                        .contentType(MediaType.APPLICATION_JSON).content("""
+                        {"login":"managed-user","name":"Менеджер","roles":["MANAGER"],"temporaryPassword":"temporary-password"}
+                        """))
+                .andExpect(status().isCreated()).andExpect(jsonPath("$.passwordChangeRequired").value(true))
+                .andExpect(jsonPath("$.passwordHash").doesNotExist()).andExpect(jsonPath("$.temporaryPassword").doesNotExist())
+                .andExpect(header().string("X-Correlation-Id", "admin-create-it"))
+                .andReturn().getResponse().getContentAsString();
+        UUID uuid = UUID.fromString(objectMapper.readTree(created).get("uuid").asText());
+        var users = context.getBean(UserRepository.class);
+        var stored = users.findByUuid(uuid).orElseThrow();
+        assertTrue(context.getBean(PasswordEncoder.class).matches("temporary-password", stored.getPasswordHash()));
+        mockMvc.perform(get("/api/admin/users").param("size", "1"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.totalElements").value(2));
+        String login = mockMvc.perform(post("/api/auth/login").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"login\":\"managed-user\",\"password\":\"temporary-password\"}"))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        String access = objectMapper.readTree(login).get("accessToken").asText();
+        mockMvc.perform(get("/api/requests").header("Authorization", "Bearer " + access)).andExpect(status().isForbidden());
+        stored.setFailedLoginAttempts(5);
+        users.saveAndFlush(stored);
+        mockMvc.perform(post("/api/admin/users/" + uuid + "/unlock")).andExpect(status().isOk())
+                .andExpect(jsonPath("$.failedLoginAttempts").value(0));
+        mockMvc.perform(put("/api/admin/users/" + uuid).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"login\":\"renamed-user\",\"name\":\"Новое имя\"}"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.login").value("renamed-user"));
+        mockMvc.perform(put("/api/admin/users/" + uuid + "/roles").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"roles\":[\"VIEWER\"]}"))
+                .andExpect(status().isOk());
+        mockMvc.perform(post("/api/admin/users/" + uuid + "/disable")).andExpect(status().isOk());
+        mockMvc.perform(post("/api/admin/users/" + uuid + "/enable")).andExpect(status().isOk());
+        mockMvc.perform(post("/api/admin/users/" + uuid + "/reset-password").header("X-Correlation-Id", "reset-it")
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"temporaryPassword\":\"reset-temporary-password\"}"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.passwordChangeRequired").value(true))
+                .andExpect(jsonPath("$.failedLoginAttempts").value(0));
+        var reset = users.findByUuid(uuid).orElseThrow();
+        assertTrue(context.getBean(PasswordEncoder.class).matches("reset-temporary-password", reset.getPasswordHash()));
+        var audit = mockMvc.perform(get("/api/admin/audit").param("search", "reset-it").param("sort", "timestamp,asc"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.totalElements").value(1))
+                .andExpect(jsonPath("$.content[0].eventType").value("PASSWORD_RESET"))
+                .andExpect(jsonPath("$.content[0].entityUuid").value(uuid.toString()))
+                .andExpect(jsonPath("$.content[0].correlationId").value("reset-it"))
+                .andReturn().getResponse().getContentAsString();
+        assertFalse(audit.contains("reset-temporary-password"));
+        assertFalse(audit.contains(reset.getPasswordHash()));
+        assertFalse(audit.contains(access));
+        mockMvc.perform(get("/api/admin/audit").param("search", "LOGIN"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.content[0].userId").value(stored.getId()));
+    }
+
+    @Test
+    void requestAuditLifecycleIsPagedAndSurvivesPermanentDelete() throws Exception {
+        String correlation = "request-lifecycle-it";
+        String created = mockMvc.perform(post("/api/requests").header("X-Correlation-Id", correlation)
+                        .contentType(MediaType.APPLICATION_JSON).content(requestBody(1, "100", null)))
+                .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString();
+        String uuid = objectMapper.readTree(created).get("uuid").asText();
+        String path = "/api/requests/" + uuid;
+        mockMvc.perform(put(path).header("X-Correlation-Id", correlation).contentType(MediaType.APPLICATION_JSON)
+                        .content(updateBody(1, "200", "CONFIRMED", 0))).andExpect(status().isOk());
+        mockMvc.perform(delete(path).header("X-Correlation-Id", correlation)).andExpect(status().isNoContent());
+        mockMvc.perform(post(path + "/restore").header("X-Correlation-Id", correlation)).andExpect(status().isOk());
+        mockMvc.perform(delete(path + "/permanent").header("X-Correlation-Id", correlation)).andExpect(status().isNoContent());
+        mockMvc.perform(get("/api/admin/audit").param("search", correlation).param("sort", "timestamp,asc").param("size", "2"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.totalElements").value(5))
+                .andExpect(jsonPath("$.totalPages").value(3)).andExpect(jsonPath("$.content[0].eventType").value("REQUEST_CREATED"))
+                .andExpect(jsonPath("$.content[1].eventType").value("REQUEST_UPDATED"));
+        mockMvc.perform(get("/api/admin/audit").param("search", correlation).param("sort", "timestamp,asc")
+                        .param("size", "2").param("page", "2"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.content[0].eventType").value("REQUEST_DELETED"));
     }
 
     @Test

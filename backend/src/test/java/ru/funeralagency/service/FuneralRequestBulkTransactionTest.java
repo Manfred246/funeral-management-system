@@ -62,7 +62,11 @@ class FuneralRequestBulkTransactionTest {
         context.registerBean(CeremonyTypeRepository.class, () -> mock(CeremonyTypeRepository.class));
         context.registerBean(TagRepository.class, () -> mock(TagRepository.class));
         context.register(TransactionConfig.class, FuneralRequestMapper.class,
-                TagService.class, FuneralRequestService.class, FuneralRequestBulkService.class);
+                TagService.class, FuneralRequestBulkService.class);
+        context.registerBean(FuneralRequestService.class, () -> new FuneralRequestService(
+                context.getBean(FuneralRequestRepository.class), context.getBean(ClientRepository.class),
+                context.getBean(FuneralRequestMapper.class), context.getBean(CeremonyTypeRepository.class),
+                context.getBean(TagService.class), mock(AuditService.class)));
         context.refresh();
         bulk = context.getBean(FuneralRequestBulkService.class);
     }

@@ -13,6 +13,8 @@ import ru.funeralagency.model.User;
 import ru.funeralagency.repository.RefreshSessionRepository;
 import ru.funeralagency.repository.UserRepository;
 import ru.funeralagency.security.JwtService;
+import ru.funeralagency.security.PasswordPolicy;
+import ru.funeralagency.model.AuditEventType;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -33,15 +35,17 @@ public class AuthService {
     private final RefreshSessionRepository sessions;
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
+    private final AuditService audit;
     private final String dummyPasswordHash;
     private final SecureRandom random = new SecureRandom();
 
     public AuthService(UserRepository users, RefreshSessionRepository sessions,
-                       PasswordEncoder passwordEncoder, JwtService jwtService) {
+                       PasswordEncoder passwordEncoder, JwtService jwtService, AuditService audit) {
         this.users = users;
         this.sessions = sessions;
         this.passwordEncoder = passwordEncoder;
         this.jwtService = jwtService;
+        this.audit = audit;
         this.dummyPasswordHash = passwordEncoder.encode(UUID.randomUUID().toString());
     }
 
@@ -74,6 +78,7 @@ public class AuthService {
         session.setTokenHash(hashToken(token));
         session.setExpiresAt(now().plusDays(7));
         sessions.save(session);
+        audit.record(AuditEventType.LOGIN, "USER", user.getUuid(), user.getId());
         return tokens(user, token);
     }
 
@@ -105,7 +110,7 @@ public class AuthService {
         if (!matches(currentPassword, user)) {
             throw invalidCredentials();
         }
-        validateNewPassword(newPassword);
+        PasswordPolicy.validate(newPassword);
         user.setPasswordHash(passwordEncoder.encode(newPassword));
         user.setPasswordChangeRequired(false);
         user.setFailedLoginAttempts(0);
@@ -128,7 +133,7 @@ public class AuthService {
         if (login.trim().length() > 100 || name.trim().length() > 255) {
             throw new ValidationException("Логин или имя первого ADMIN слишком длинные");
         }
-        validateNewPassword(password);
+        PasswordPolicy.validate(password);
         User user = new User();
         user.setLogin(login.trim());
         user.setName(name.trim());
@@ -136,18 +141,12 @@ public class AuthService {
         user.setPasswordChangeRequired(true);
         user.setRoles(Set.of(Role.ADMIN));
         users.saveAndFlush(user);
+        audit.record(AuditEventType.USER_CREATED, "USER", user.getUuid());
     }
 
     private boolean matches(String password, User user) {
         return password != null && password.getBytes(StandardCharsets.UTF_8).length <= 72
                 && passwordEncoder.matches(password, user.getPasswordHash());
-    }
-
-    private void validateNewPassword(String password) {
-        if (password == null || password.isBlank() || password.length() < 8
-                || password.getBytes(StandardCharsets.UTF_8).length > 72) {
-            throw new ValidationException("Пароль должен содержать не менее 8 символов и не более 72 байт UTF-8");
-        }
     }
 
     private AuthTokensDto tokens(User user, String refreshToken) {

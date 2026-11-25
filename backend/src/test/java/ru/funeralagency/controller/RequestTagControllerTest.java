@@ -46,7 +46,7 @@ class RequestTagControllerTest {
     @BeforeEach
     void setUp() {
         var mapper = new FuneralRequestMapper();
-        var service = new FuneralRequestService(requests, clients, mapper, types, new TagService(tags));
+        var service = new FuneralRequestService(requests, clients, mapper, types, new TagService(tags), org.mockito.Mockito.mock(ru.funeralagency.service.AuditService.class));
         mvc = MockMvcBuilders.standaloneSetup(new FuneralRequestController(service, mapper, exporter))
                 .setControllerAdvice(new ApiExceptionHandler()).build();
         stored = new FuneralRequest();

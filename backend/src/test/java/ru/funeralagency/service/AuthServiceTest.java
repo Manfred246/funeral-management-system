@@ -45,7 +45,7 @@ class AuthServiceTest {
     void setUp() {
         encoder = new BCryptPasswordEncoder(4);
         jwt = new JwtService("unit-test-key-only-not-for-production-1234567890");
-        service = new AuthService(users, sessions, encoder, jwt);
+        service = new AuthService(users, sessions, encoder, jwt, mock(AuditService.class));
         user = new User();
         user.setId(1L);
         user.setLogin("viewer");

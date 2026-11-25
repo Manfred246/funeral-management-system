@@ -52,7 +52,7 @@ class FuneralRequestCsvServiceTest {
 
     @BeforeEach
     void setUp() {
-        FuneralRequestService requests = new FuneralRequestService(repository, clients, new FuneralRequestMapper(), types, tags);
+        FuneralRequestService requests = new FuneralRequestService(repository, clients, new FuneralRequestMapper(), types, tags, org.mockito.Mockito.mock(AuditService.class));
         csv = new FuneralRequestCsvService(new FuneralRequestCsv(), new FuneralRequestCsvRowService(requests, repository), requests);
         existing = new FuneralRequest(7L, client, "Старое имя", LocalDate.now().plusDays(5), type,
                 RequestStatus.NEW, new BigDecimal("10.00"), LocalDateTime.of(2026, 1, 1, 12, 0), "Сохранить комментарий");
