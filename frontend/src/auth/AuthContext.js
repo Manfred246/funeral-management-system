@@ -10,3 +10,11 @@ export function canManage(user) {
 export function isAdmin(user) {
   return user?.roles?.includes('ADMIN') || false;
 }
+
+export function loginDestination(user, from) {
+  if (user.passwordChangeRequired) return '/change-password';
+  if (typeof from === 'string' && from.startsWith('/') && !from.startsWith('//') && from !== '/login') {
+    return from;
+  }
+  return '/requests';
+}

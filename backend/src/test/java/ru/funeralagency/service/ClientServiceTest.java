@@ -8,6 +8,8 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.postgresql.util.PSQLException;
+import org.postgresql.util.ServerErrorMessage;
 import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.dao.DataIntegrityViolationException;
 import ru.funeralagency.exception.BusinessException;
@@ -118,5 +120,26 @@ class ClientServiceTest {
     private DataIntegrityViolationException constraintError(String name) {
         return new DataIntegrityViolationException("test",
                 new ConstraintViolationException("test", new SQLException("test"), name));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"uq_clients_phone", "uq_clients_email", "fk_funeral_requests_client"})
+    void localizedPostgresErrorUsesStructuredConstraintWhenHibernateNameIsMissing(String constraint) {
+        String state = constraint.startsWith("fk_") ? "23001" : "23505";
+        var metadata = new ServerErrorMessage("SERROR\0C" + state + "\0MЛокализованная ошибка\0n" + constraint + "\0");
+        var postgres = new PSQLException(metadata);
+        var failure = new DataIntegrityViolationException("test",
+                new ConstraintViolationException("test", postgres, null));
+        if (constraint.startsWith("fk_")) {
+            when(clients.findById(7L)).thenReturn(Optional.of(new Client()));
+            doThrow(failure).when(clients).flush();
+            BusinessException error = assertThrows(BusinessException.class, () -> service.deleteById(7L));
+            assertTrue(error.getMessage().contains("связанные заявки"));
+        } else {
+            when(clients.saveAndFlush(any())).thenThrow(failure);
+            BusinessException error = assertThrows(BusinessException.class,
+                    () -> service.create(new Client(null, "Иван Иванов", "+79991234567", null)));
+            assertEquals("Клиент с таким телефоном или email уже существует", error.getMessage());
+        }
     }
 }

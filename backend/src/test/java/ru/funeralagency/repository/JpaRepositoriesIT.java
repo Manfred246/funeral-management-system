@@ -340,7 +340,10 @@ class JpaRepositoriesIT {
 
     @Test
     void partialNameSearchIsCaseInsensitiveAndEscapesWildcards() {
-        assertEquals(2, requestService.search("иВаНо", null).size());
+        var matches = requestService.search("иВаНо", null);
+        assertEquals(3, matches.size());
+        assertTrue(matches.stream().allMatch(request -> request.getDeceasedFullName()
+                .toLowerCase(java.util.Locale.ROOT).contains("ивано")));
         FuneralRequest request = newRequest();
         request.setDeceasedFullName("O'Brien 50%_!");
         requests.saveAndFlush(request);
@@ -914,7 +917,7 @@ class JpaRepositoriesIT {
         var created = context.getBean(RequestNoteService.class)
                 .create(request.getUuid(), author.getUuid(), "Текст", false);
         try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
-            assertEquals("23503", assertThrows(java.sql.SQLException.class,
+            assertEquals("23001", assertThrows(java.sql.SQLException.class,
                     () -> statement.execute("DELETE FROM users WHERE id = " + author.getId())).getSQLState());
             assertEquals("23503", assertThrows(java.sql.SQLException.class,
                     () -> statement.execute("UPDATE request_notes SET request_id = 999999")).getSQLState());
@@ -1055,7 +1058,7 @@ class JpaRepositoriesIT {
                     () -> statement.execute("INSERT INTO funeral_request_tags VALUES (1, 999999)")).getSQLState());
             assertEquals("23503", assertThrows(java.sql.SQLException.class,
                     () -> statement.execute("INSERT INTO funeral_request_tags VALUES (999999, " + tag.getId() + ")")).getSQLState());
-            assertEquals("23503", assertThrows(java.sql.SQLException.class,
+            assertEquals("23001", assertThrows(java.sql.SQLException.class,
                     () -> statement.execute("DELETE FROM tags WHERE id = " + tag.getId())).getSQLState());
         }
     }

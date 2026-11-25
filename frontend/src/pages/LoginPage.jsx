@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Navigate, useLocation, useNavigate } from 'react-router';
-import { useAuth } from '../auth/AuthContext';
+import { loginDestination, useAuth } from '../auth/AuthContext';
 import { ErrorBlock, Loading, Notice } from '../components/Feedback';
 
 export default function LoginPage() {
@@ -11,7 +11,7 @@ export default function LoginPage() {
   const [busy, setBusy] = useState(false);
   if (auth.loading) return <Loading />;
   if (auth.user)
-    return <Navigate to={auth.user.passwordChangeRequired ? '/change-password' : '/requests'} replace />;
+    return <Navigate to={loginDestination(auth.user, location.state?.from)} replace />;
   async function submit(event) {
     event.preventDefault();
     const form = event.currentTarget;
@@ -20,15 +20,7 @@ export default function LoginPage() {
     setError(null);
     try {
       const user = await auth.login(values.get('login').trim(), values.get('password'));
-      const from = location.state?.from;
-      navigate(
-        user.passwordChangeRequired
-          ? '/change-password'
-          : from?.startsWith('/') && !from.startsWith('//') && from !== '/login'
-            ? from
-            : '/requests',
-        { replace: true },
-      );
+      navigate(loginDestination(user, location.state?.from), { replace: true });
     } catch (error) {
       setError(error);
     } finally {

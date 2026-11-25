@@ -1,7 +1,18 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { loginDestination } from '../auth/AuthContext.js';
 
 let sequence = 0;
+
+test('both login redirect paths retain the protected URL and enforce required password change', () => {
+  const user = { passwordChangeRequired: false };
+  const from = '/requests/some-uuid/edit?source=list';
+  assert.equal(loginDestination(user, from), from);
+  assert.equal(loginDestination({ passwordChangeRequired: true }, from), '/change-password');
+  for (const invalid of [undefined, '/login', '//other-host', 'https://other-host']) {
+    assert.equal(loginDestination(user, invalid), '/requests');
+  }
+});
 const response = (data, status = 200) =>
   new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json' } });
 const session = {
