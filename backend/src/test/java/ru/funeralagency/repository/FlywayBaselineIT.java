@@ -48,6 +48,7 @@ class FlywayBaselineIT {
                         SET created_at = TIMESTAMP '2000-01-01 12:00:00', ceremony_date = DATE '2000-01-04'
                         WHERE id = 1
                         """);
+                statement.execute("INSERT INTO ceremony_types(id, name) VALUES (99, 'Старый пользовательский тип')");
                 before = snapshot(statement);
             }
             SpringApplication application = new SpringApplication(Main.class);
@@ -64,18 +65,26 @@ class FlywayBaselineIT {
                 assertEquals("validate", context.getEnvironment().getProperty("spring.jpa.hibernate.ddl-auto"));
                 Flyway flyway = context.getBean(Flyway.class);
                 var applied = flyway.info().applied();
-                assertEquals(3, applied.length);
+                assertEquals(4, applied.length);
                 assertEquals("1", applied[0].getVersion().getVersion());
                 assertEquals("BASELINE", applied[0].getType().name());
                 assertEquals("2", applied[1].getVersion().getVersion());
                 assertEquals("SQL", applied[1].getType().name());
                 assertEquals("3", applied[2].getVersion().getVersion());
                 assertEquals("SQL", applied[2].getType().name());
+                assertEquals("4", applied[3].getVersion().getVersion());
+                assertEquals("SQL", applied[3].getType().name());
                 assertEquals(0, flyway.migrate().migrationsExecuted);
                 assertEquals(6, context.getBean(ClientRepository.class).count());
                 assertEquals(12, context.getBean(FuneralRequestRepository.class).count());
                 try (Connection connection = source.getConnection(); Statement statement = connection.createStatement()) {
                     assertEquals(before, snapshot(statement));
+                    var types = context.getBean(CeremonyTypeRepository.class);
+                    assertEquals("BURIAL", types.findById(1L).orElseThrow().getCode());
+                    assertEquals("Захоронение", types.findById(1L).orElseThrow().getName());
+                    assertEquals("CREMATION", types.findById(2L).orElseThrow().getCode());
+                    assertTrue(types.findById(2L).orElseThrow().isEnabled());
+                    assertEquals("LEGACY_99", types.findById(99L).orElseThrow().getCode());
                     try (ResultSet result = statement.executeQuery("""
                             SELECT id, uuid, request_code, urgent, archived, priority,
                                    created_at, updated_at, version

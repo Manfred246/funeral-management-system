@@ -113,7 +113,7 @@ class FuneralRequestValidationRulesTest {
                 new Client(1L, "Клиент", "+79991234567", null),
                 "Иванов Иван Иванович",
                 LocalDate.now().plusDays(1),
-                CeremonyType.BURIAL,
+                new CeremonyType(1L, "BURIAL", "Захоронение", true),
                 RequestStatus.NEW,
                 new BigDecimal("10000.00"),
                 LocalDateTime.now(),
@@ -146,7 +146,7 @@ class FuneralRequestValidationRulesTest {
         request.setClient(new Client(1L, "Клиент", "+79991234567", null));
         request.setCeremonyType(null);
         assertThrows(ValidationException.class, () -> FuneralRequestValidationRules.validate(request));
-        request.setCeremonyType(CeremonyType.BURIAL);
+        request.setCeremonyType(new CeremonyType(1L, "BURIAL", "Захоронение", true));
         request.setPrice(null);
         assertThrows(ValidationException.class, () -> FuneralRequestValidationRules.validate(request));
     }

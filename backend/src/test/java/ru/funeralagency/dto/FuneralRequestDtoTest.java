@@ -18,7 +18,7 @@ class FuneralRequestDtoTest {
                   "clientId": 1,
                   "deceasedFullName": "Иван Иванов",
                   "ceremonyDate": "2027-01-01",
-                  "ceremonyType": "BURIAL",
+                  "ceremonyTypeId": 1,
                   "price": 100,
                   "id": 999,
                   "uuid": "00000000-0000-0000-0000-000000000001",

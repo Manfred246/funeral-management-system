@@ -1,6 +1,5 @@
 package ru.funeralagency.dto;
 
-import ru.funeralagency.model.CeremonyType;
 import ru.funeralagency.model.RequestStatus;
 
 import java.math.BigDecimal;
@@ -8,7 +7,7 @@ import java.math.BigDecimal;
 public class FuneralRequestFilterDto {
     private String q;
     private Long client;
-    private CeremonyType ceremonyType;
+    private Long ceremonyTypeId;
     private RequestStatus status;
     private Boolean urgent;
     private Integer priority;
@@ -32,12 +31,12 @@ public class FuneralRequestFilterDto {
         this.client = client;
     }
 
-    public CeremonyType getCeremonyType() {
-        return ceremonyType;
+    public Long getCeremonyTypeId() {
+        return ceremonyTypeId;
     }
 
-    public void setCeremonyType(CeremonyType ceremonyType) {
-        this.ceremonyType = ceremonyType;
+    public void setCeremonyTypeId(Long ceremonyTypeId) {
+        this.ceremonyTypeId = ceremonyTypeId;
     }
 
     public RequestStatus getStatus() {

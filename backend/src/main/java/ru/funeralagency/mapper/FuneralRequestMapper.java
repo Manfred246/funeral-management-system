@@ -15,7 +15,6 @@ public class FuneralRequestMapper {
         FuneralRequest request = new FuneralRequest();
         request.setDeceasedFullName(dto.getDeceasedFullName());
         request.setCeremonyDate(dto.getCeremonyDate());
-        request.setCeremonyType(dto.getCeremonyType());
         request.setPrice(dto.getPrice());
         request.setComment(dto.getComment());
         request.setUrgent(dto.isUrgent());
@@ -26,7 +25,6 @@ public class FuneralRequestMapper {
         FuneralRequest request = new FuneralRequest();
         request.setDeceasedFullName(dto.getDeceasedFullName());
         request.setCeremonyDate(dto.getCeremonyDate());
-        request.setCeremonyType(dto.getCeremonyType());
         request.setStatus(dto.getStatus());
         request.setPrice(dto.getPrice());
         request.setComment(dto.getComment());
@@ -39,7 +37,7 @@ public class FuneralRequestMapper {
     public FuneralRequestResponseDto toResponseDto(FuneralRequest request) {
         FuneralRequestResponseDto response = new FuneralRequestResponseDto(
                 request.getId(), request.getClient().getId(), request.getDeceasedFullName(),
-                request.getCeremonyDate(), request.getCeremonyType(), request.getStatus(),
+                request.getCeremonyDate(), CeremonyTypeMapper.toResponseDto(request.getCeremonyType()), request.getStatus(),
                 request.getPrice(), request.getCreatedAt(), request.getComment()
         );
         response.setUuid(request.getUuid());

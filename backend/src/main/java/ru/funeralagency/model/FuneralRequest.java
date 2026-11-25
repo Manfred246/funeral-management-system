@@ -44,8 +44,8 @@ public class FuneralRequest {
     @Column(name = "ceremony_date", nullable = false)
     private LocalDate ceremonyDate;
 
-    @Convert(converter = CeremonyTypeConverter.class)
-    @Column(name = "ceremony_type_id", nullable = false)
+    @ManyToOne(optional = false)
+    @JoinColumn(name = "ceremony_type_id", nullable = false)
     private CeremonyType ceremonyType;
 
     @Convert(converter = RequestStatusConverter.class)

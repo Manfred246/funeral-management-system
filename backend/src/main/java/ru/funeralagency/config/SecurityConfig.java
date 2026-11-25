@@ -40,6 +40,11 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.POST, "/api/auth/login", "/api/auth/refresh", "/api/auth/logout").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/auth/me").authenticated()
                         .requestMatchers(HttpMethod.POST, "/api/auth/change-password").authenticated()
+                        .requestMatchers(HttpMethod.GET, "/api/ceremony-types", "/api/ceremony-types/*")
+                                .hasAnyRole("VIEWER", "MANAGER", "ADMIN")
+                        .requestMatchers(HttpMethod.POST, "/api/ceremony-types", "/api/ceremony-types/*/enable",
+                                "/api/ceremony-types/*/disable").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.PUT, "/api/ceremony-types/*").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.DELETE, "/api/requests/*/permanent").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.GET, "/api/requests", "/api/requests/**", "/api/statistics",
                                 "/api/clients", "/api/clients/**").hasAnyRole("VIEWER", "MANAGER", "ADMIN")

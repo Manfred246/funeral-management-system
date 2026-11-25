@@ -1,8 +1,8 @@
 package ru.funeralagency.dto;
 
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.PositiveOrZero;
-import ru.funeralagency.model.CeremonyType;
 import ru.funeralagency.model.RequestStatus;
 
 import java.math.BigDecimal;
@@ -13,7 +13,11 @@ public class FuneralRequestUpdateDto {
     private Long clientId;
     private String deceasedFullName;
     private LocalDate ceremonyDate;
-    private CeremonyType ceremonyType;
+
+    @NotNull(message = "Тип церемонии обязателен")
+    @Positive(message = "ID типа церемонии должен быть положительным")
+    private Long ceremonyTypeId;
+
     private RequestStatus status;
     private BigDecimal price;
     private String comment;
@@ -30,7 +34,7 @@ public class FuneralRequestUpdateDto {
             Long clientId,
             String deceasedFullName,
             LocalDate ceremonyDate,
-            CeremonyType ceremonyType,
+            Long ceremonyTypeId,
             RequestStatus status,
             BigDecimal price,
             String comment
@@ -38,7 +42,7 @@ public class FuneralRequestUpdateDto {
         this.clientId = clientId;
         this.deceasedFullName = deceasedFullName;
         this.ceremonyDate = ceremonyDate;
-        this.ceremonyType = ceremonyType;
+        this.ceremonyTypeId = ceremonyTypeId;
         this.status = status;
         this.price = price;
         this.comment = comment;
@@ -68,12 +72,12 @@ public class FuneralRequestUpdateDto {
         this.ceremonyDate = ceremonyDate;
     }
 
-    public CeremonyType getCeremonyType() {
-        return ceremonyType;
+    public Long getCeremonyTypeId() {
+        return ceremonyTypeId;
     }
 
-    public void setCeremonyType(CeremonyType ceremonyType) {
-        this.ceremonyType = ceremonyType;
+    public void setCeremonyTypeId(Long ceremonyTypeId) {
+        this.ceremonyTypeId = ceremonyTypeId;
     }
 
     public RequestStatus getStatus() {

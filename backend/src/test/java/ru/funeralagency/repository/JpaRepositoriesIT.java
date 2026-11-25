@@ -16,7 +16,6 @@ import org.springframework.boot.SpringApplication;
 import org.springframework.boot.WebApplicationType;
 import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.core.env.MapPropertySource;
-import org.springframework.dao.DataAccessException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Sort;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
@@ -103,7 +102,9 @@ class JpaRepositoriesIT {
     void resetDemoData() throws Exception {
         try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
             statement.execute("TRUNCATE funeral_requests, clients, refresh_sessions, user_roles, users RESTART IDENTITY");
-            statement.execute("DELETE FROM ceremony_types WHERE id = 99");
+            statement.execute("DELETE FROM ceremony_types WHERE id NOT IN (1, 2)");
+            statement.execute("UPDATE ceremony_types SET enabled = true, name = CASE id WHEN 1 THEN 'Захоронение' ELSE 'Кремация' END");
+            statement.execute("ALTER TABLE ceremony_types ALTER COLUMN id RESTART WITH 3");
             statement.execute(Files.readString(Path.of(System.getProperty("project.root"), "database", "seed.sql")));
         }
     }
@@ -121,9 +122,9 @@ class JpaRepositoriesIT {
     }
 
     @Test
-    void flywayCreatesV1V2V3AndDoesNotRepeatThem() {
+    void flywayCreatesV1V2V3V4AndDoesNotRepeatThem() {
         Flyway flyway = context.getBean(Flyway.class);
-        assertEquals("3", flyway.info().current().getVersion().getVersion());
+        assertEquals("4", flyway.info().current().getVersion().getVersion());
         assertEquals("SQL", flyway.info().current().getType().name());
         assertEquals(0, flyway.migrate().migrationsExecuted);
         assertEquals(6, clients.count());
@@ -176,7 +177,7 @@ class JpaRepositoriesIT {
             connection.setAutoCommit(false);
             try (Statement statement = connection.createStatement()) {
                 try (ResultSet result = statement.executeQuery(
-                        "INSERT INTO ceremony_types (name) VALUES ('Тестовый тип') RETURNING id")) {
+                        "INSERT INTO ceremony_types (code, name) VALUES ('TEST_TYPE', 'Тестовый тип') RETURNING id")) {
                     assertTrue(result.next());
                     assertEquals(3, result.getInt(1));
                 }
@@ -256,7 +257,7 @@ class JpaRepositoriesIT {
         assertEquals(0L, saved.getVersion());
         saved.setPrice(new BigDecimal("98765.43"));
         saved.setStatus(RequestStatus.CONFIRMED);
-        saved.setCeremonyType(CeremonyType.CREMATION);
+        saved.setCeremonyType(new CeremonyType(2L, "CREMATION", "Кремация", true));
         saved.setComment("Изменено");
         saved.setUpdatedAt(createdAt.plusHours(1));
         requests.saveAndFlush(saved);
@@ -265,7 +266,8 @@ class JpaRepositoriesIT {
         assertEquals("+79990000001", read.getClient().getPhone());
         assertEquals(createdAt, read.getCreatedAt());
         assertEquals(saved.getPrice(), read.getPrice());
-        assertEquals(CeremonyType.CREMATION, read.getCeremonyType());
+        assertEquals(2L, read.getCeremonyType().getId());
+        assertEquals("CREMATION", read.getCeremonyType().getCode());
         assertEquals(RequestStatus.CONFIRMED, read.getStatus());
         assertEquals(uuid, read.getUuid());
         assertEquals(requestCode, read.getRequestCode());
@@ -337,10 +339,10 @@ class JpaRepositoriesIT {
     void filtersCombineEnumsDatesAndClient() {
         assertEquals(12, requestService.filter(null, null, null, null).size());
         assertEquals(2, requestService.search(null, 2L).size());
-        assertEquals(1, requestService.filter(RequestStatus.NEW, CeremonyType.BURIAL,
+        assertEquals(1, requestService.filter(RequestStatus.NEW, "BURIAL",
                 LocalDate.now(), LocalDate.now().plusDays(8)).size());
         assertEquals(3, requestService.filter(RequestStatus.NEW, null, null, null).size());
-        assertEquals(6, requestService.filter(null, CeremonyType.CREMATION, null, null).size());
+        assertEquals(6, requestService.filter(null, "CREMATION", null, null).size());
         assertTrue(requestService.filter(null, null, LocalDate.now().plusYears(1), null).isEmpty());
         assertTrue(requestService.filter(null, null, null, LocalDate.now().minusYears(1)).isEmpty());
     }
@@ -367,7 +369,7 @@ class JpaRepositoriesIT {
         FuneralRequestFilterDto filter = new FuneralRequestFilterDto();
         filter.setQ(first.getRequestCode().toLowerCase(java.util.Locale.ROOT));
         filter.setClient(1L);
-        filter.setCeremonyType(CeremonyType.BURIAL);
+        filter.setCeremonyTypeId(1L);
         filter.setStatus(RequestStatus.NEW);
         filter.setUrgent(true);
         filter.setPriority(4);
@@ -405,7 +407,7 @@ class JpaRepositoriesIT {
                 filterCase("SQL text is data", f -> f.setQ("' OR 1=1 --"), 0),
                 filterCase("blank q", f -> f.setQ("   "), 2),
                 filterCase("client", f -> f.setClient(2L), 1),
-                filterCase("ceremonyType", f -> f.setCeremonyType(CeremonyType.CREMATION), 1),
+                filterCase("ceremonyType", f -> f.setCeremonyTypeId(2L), 1),
                 filterCase("status", f -> f.setStatus(RequestStatus.CONFIRMED), 1),
                 filterCase("urgent true", f -> f.setUrgent(true), 1),
                 filterCase("urgent false", f -> f.setUrgent(false), 1),
@@ -472,7 +474,7 @@ class JpaRepositoriesIT {
         second.setCreatedAt(createdAt);
         second.setUpdatedAt(createdAt);
         second.setCeremonyDate(createdAt.toLocalDate().plusDays(4));
-        second.setCeremonyType(CeremonyType.CREMATION);
+        second.setCeremonyType(new CeremonyType(2L, "CREMATION", "Кремация", true));
         second.setStatus(RequestStatus.CONFIRMED);
         second.setPrice(new BigDecimal("200.00"));
         FuneralRequest archived = newRequest();
@@ -483,17 +485,20 @@ class JpaRepositoriesIT {
     }
 
     @Test
-    void unknownLookupIdFailsSafely() throws Exception {
+    void customDisabledTypeCanBeReadThroughExistingRelationship() throws Exception {
         try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
-            statement.execute("INSERT INTO ceremony_types (id, name) VALUES (99, 'Неизвестный тип')");
+            statement.execute("INSERT INTO ceremony_types (id, code, name, enabled) VALUES (99, 'CUSTOM', 'Пользовательский тип', false)");
             statement.execute("UPDATE funeral_requests SET ceremony_type_id = 99 WHERE id = 1");
         }
-        assertThrows(DataAccessException.class, () -> requests.findById(1L));
+        var read = requests.findById(1L).orElseThrow();
+        assertEquals(99L, read.getCeremonyType().getId());
+        assertEquals("CUSTOM", read.getCeremonyType().getCode());
+        assertFalse(read.getCeremonyType().isEnabled());
     }
 
     private FuneralRequest newRequest() {
         FuneralRequest request = new FuneralRequest(null, clients.findById(1L).orElseThrow(), "Тестовый умерший",
-                LocalDate.now().plusDays(5), CeremonyType.BURIAL, RequestStatus.NEW,
+                LocalDate.now().plusDays(5), new CeremonyType(1L, "BURIAL", "Захоронение", true), RequestStatus.NEW,
                 new BigDecimal("12345.67"), LocalDateTime.now().truncatedTo(ChronoUnit.MICROS), null);
         UUID uuid = UUID.randomUUID();
         request.setUuid(uuid);

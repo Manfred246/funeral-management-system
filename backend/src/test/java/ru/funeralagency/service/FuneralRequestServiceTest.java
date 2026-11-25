@@ -18,6 +18,7 @@ import ru.funeralagency.model.Client;
 import ru.funeralagency.model.FuneralRequest;
 import ru.funeralagency.model.RequestStatus;
 import ru.funeralagency.repository.ClientRepository;
+import ru.funeralagency.repository.CeremonyTypeRepository;
 import ru.funeralagency.repository.FuneralRequestRepository;
 
 import java.math.BigDecimal;
@@ -52,11 +53,14 @@ class FuneralRequestServiceTest {
     @Mock
     private ClientRepository clientRepository;
 
+    @Mock
+    private CeremonyTypeRepository ceremonyTypes;
+
     private FuneralRequestService service;
 
     @BeforeEach
     void setUp() {
-        service = new FuneralRequestService(requestRepository, clientRepository, new ru.funeralagency.mapper.FuneralRequestMapper());
+        service = new FuneralRequestService(requestRepository, clientRepository, new ru.funeralagency.mapper.FuneralRequestMapper(), ceremonyTypes);
     }
 
     @Test
@@ -72,6 +76,7 @@ class FuneralRequestServiceTest {
         request.setVersion(999L);
         Client existingClient = client();
         when(clientRepository.findById(1L)).thenReturn(Optional.of(existingClient));
+        when(ceremonyTypes.findById(1L)).thenReturn(Optional.of(new CeremonyType(1L, "BURIAL", "Захоронение", true)));
         when(requestRepository.saveAndFlush(any())).thenAnswer(invocation -> {
             FuneralRequest saved = invocation.getArgument(0);
             assertNull(saved.getId());
@@ -83,7 +88,7 @@ class FuneralRequestServiceTest {
             return saved;
         });
 
-        FuneralRequest created = service.create(request, 1L);
+        FuneralRequest created = service.create(request, 1L, 1L);
 
         assertNull(created.getId());
         assertEquals(RequestStatus.NEW, created.getStatus());
@@ -118,7 +123,7 @@ class FuneralRequestServiceTest {
         FuneralRequest request = validRequest(null, RequestStatus.NEW);
         when(clientRepository.findById(1L)).thenReturn(Optional.empty());
 
-        assertThrows(ValidationException.class, () -> service.create(request, 1L));
+        assertThrows(ValidationException.class, () -> service.create(request, 1L, 1L));
 
         verify(requestRepository, never()).saveAndFlush(any());
     }
@@ -129,7 +134,7 @@ class FuneralRequestServiceTest {
         FuneralRequest update = validRequest(null, RequestStatus.COMPLETED);
         when(requestRepository.findByUuid(REQUEST_UUID)).thenReturn(Optional.of(existing));
 
-        assertThrows(BusinessException.class, () -> service.updateByUuid(REQUEST_UUID, update, 1L, null, 0L));
+        assertThrows(BusinessException.class, () -> service.updateByUuid(REQUEST_UUID, update, 1L, 1L, null, 0L));
 
         verify(requestRepository, never()).saveAndFlush(any());
     }
@@ -145,7 +150,8 @@ class FuneralRequestServiceTest {
 
         assertEquals(List.of(request), service.search("иванов", null));
         assertEquals(List.of(request), service.search(null, 1L));
-        assertEquals(List.of(request), service.filter(RequestStatus.NEW, CeremonyType.BURIAL, null, null));
+        when(ceremonyTypes.findByCode("BURIAL")).thenReturn(Optional.of(new CeremonyType(1L, "BURIAL", "Захоронение", true)));
+        assertEquals(List.of(request), service.filter(RequestStatus.NEW, "BURIAL", null, null));
         assertEquals(List.of(request), service.sort("price", true));
         verify(requestRepository, never()).findAll();
     }
@@ -177,9 +183,10 @@ class FuneralRequestServiceTest {
         input.setPriority(999);
         when(requestRepository.findByUuid(REQUEST_UUID)).thenReturn(Optional.of(existing));
         when(clientRepository.findById(1L)).thenReturn(Optional.of(client()));
+        when(ceremonyTypes.findById(1L)).thenReturn(Optional.of(new CeremonyType(1L, "BURIAL", "Захоронение", true)));
         when(requestRepository.saveAndFlush(existing)).thenReturn(existing);
 
-        assertSame(existing, service.updateByUuid(REQUEST_UUID, input, 1L, true, 4L));
+        assertSame(existing, service.updateByUuid(REQUEST_UUID, input, 1L, 1L, true, 4L));
 
         assertEquals(5L, existing.getId());
         assertEquals(uuid, existing.getUuid());
@@ -204,10 +211,11 @@ class FuneralRequestServiceTest {
         input.setCeremonyDate(LocalDate.now().plusDays(30));
         when(requestRepository.findByUuid(REQUEST_UUID)).thenReturn(Optional.of(existing));
         when(clientRepository.findById(1L)).thenReturn(Optional.of(client()));
+        when(ceremonyTypes.findById(1L)).thenReturn(Optional.of(new CeremonyType(1L, "BURIAL", "Захоронение", true)));
         when(requestRepository.saveAndFlush(existing)).thenReturn(existing);
         Boolean urgent = "null".equals(urgentValue) ? null : Boolean.valueOf(urgentValue);
 
-        FuneralRequest updated = service.updateByUuid(REQUEST_UUID, input, 1L, urgent, 0L);
+        FuneralRequest updated = service.updateByUuid(REQUEST_UUID, input, 1L, 1L, urgent, 0L);
 
         assertEquals(expectedUrgent, updated.isUrgent());
         assertEquals(expectedPriority, updated.getPriority());
@@ -217,7 +225,7 @@ class FuneralRequestServiceTest {
     void missingRequestCannotBeUpdated() {
         when(requestRepository.findByUuid(REQUEST_UUID)).thenReturn(Optional.empty());
         assertThrows(EntityNotFoundException.class,
-                () -> service.updateByUuid(REQUEST_UUID, validRequest(null, RequestStatus.CONFIRMED), 1L, null, 0L));
+                () -> service.updateByUuid(REQUEST_UUID, validRequest(null, RequestStatus.CONFIRMED), 1L, 1L, null, 0L));
         verify(requestRepository, never()).saveAndFlush(any());
     }
 
@@ -230,7 +238,7 @@ class FuneralRequestServiceTest {
         input.setPrice(new BigDecimal("999.00"));
 
         assertThrows(OptimisticLockingFailureException.class,
-                () -> service.updateByUuid(REQUEST_UUID, input, 1L, true, 2L));
+                () -> service.updateByUuid(REQUEST_UUID, input, 1L, 1L, true, 2L));
 
         assertEquals(RequestStatus.NEW, existing.getStatus());
         assertEquals(new BigDecimal("10000.00"), existing.getPrice());
@@ -245,9 +253,9 @@ class FuneralRequestServiceTest {
                 .thenReturn(Optional.of(validRequest(5L, RequestStatus.NEW)));
         FuneralRequest input = validRequest(null, RequestStatus.CONFIRMED);
         assertThrows(ValidationException.class,
-                () -> service.updateByUuid(REQUEST_UUID, input, 1L, null, null));
+                () -> service.updateByUuid(REQUEST_UUID, input, 1L, 1L, null, null));
         assertThrows(ValidationException.class,
-                () -> service.updateByUuid(REQUEST_UUID, input, 1L, null, -1L));
+                () -> service.updateByUuid(REQUEST_UUID, input, 1L, 1L, null, -1L));
         verify(requestRepository, never()).saveAndFlush(any());
     }
 
@@ -321,6 +329,49 @@ class FuneralRequestServiceTest {
     }
 
     @Test
+    void missingCeremonyTypeIsNotFoundAndDisabledTypeCannotBeUsedForCreate() {
+        when(clientRepository.findById(1L)).thenReturn(Optional.of(client()));
+        when(ceremonyTypes.findById(99L)).thenReturn(Optional.empty());
+        assertThrows(EntityNotFoundException.class, () -> service.create(validRequest(null, RequestStatus.NEW), 1L, 99L));
+        when(ceremonyTypes.findById(1L)).thenReturn(Optional.of(new CeremonyType(1L, "BURIAL", "Захоронение", false)));
+        assertThrows(BusinessException.class, () -> service.create(validRequest(null, RequestStatus.NEW), 1L, 1L));
+        verify(requestRepository, never()).saveAndFlush(any());
+    }
+
+    @Test
+    void existingDisabledTypeCanBeReadAndKeptOnUpdate() {
+        FuneralRequest existing = validRequest(5L, RequestStatus.NEW);
+        existing.getCeremonyType().setEnabled(false);
+        when(requestRepository.findByUuid(REQUEST_UUID)).thenReturn(Optional.of(existing));
+        when(clientRepository.findById(1L)).thenReturn(Optional.of(client()));
+        when(ceremonyTypes.findById(1L)).thenReturn(Optional.of(existing.getCeremonyType()));
+        when(requestRepository.saveAndFlush(existing)).thenReturn(existing);
+        assertSame(existing, service.getByUuid(REQUEST_UUID));
+        service.updateByUuid(REQUEST_UUID, validRequest(null, RequestStatus.CONFIRMED), 1L, 1L, null, 0L);
+        assertFalse(existing.getCeremonyType().isEnabled());
+        assertEquals(1L, existing.getCeremonyType().getId());
+        assertEquals(RequestStatus.CONFIRMED, existing.getStatus());
+    }
+
+    @Test
+    void updateCanAssignAnotherEnabledTypeButRejectsDisabledReplacement() {
+        FuneralRequest existing = validRequest(5L, RequestStatus.NEW);
+        CeremonyType replacement = new CeremonyType(2L, "CREMATION", "Кремация", false);
+        when(requestRepository.findByUuid(REQUEST_UUID)).thenReturn(Optional.of(existing));
+        when(clientRepository.findById(1L)).thenReturn(Optional.of(client()));
+        when(ceremonyTypes.findById(2L)).thenReturn(Optional.of(replacement));
+        FuneralRequest input = validRequest(null, RequestStatus.CONFIRMED);
+        assertThrows(BusinessException.class,
+                () -> service.updateByUuid(REQUEST_UUID, input, 1L, 2L, null, 0L));
+        assertEquals(1L, existing.getCeremonyType().getId());
+        verify(requestRepository, never()).saveAndFlush(any());
+        replacement.setEnabled(true);
+        when(requestRepository.saveAndFlush(existing)).thenReturn(existing);
+        service.updateByUuid(REQUEST_UUID, input, 1L, 2L, null, 0L);
+        assertSame(replacement, existing.getCeremonyType());
+    }
+
+    @Test
     void rejectsInvalidSearchSortAndDateRangeBeforeQueryingDatabase() {
         assertThrows(ValidationException.class, () -> service.search(null, null));
         assertThrows(ValidationException.class, () -> service.search("Имя", 1L));
@@ -338,7 +389,7 @@ class FuneralRequestServiceTest {
                 new Client(1L, "Клиент", "+79991234567", null),
                 "Иванов Иван Иванович",
                 LocalDate.now().plusDays(2),
-                CeremonyType.BURIAL,
+                new CeremonyType(1L, "BURIAL", "Захоронение", true),
                 status,
                 new BigDecimal("10000.00"),
                 LocalDateTime.now(),

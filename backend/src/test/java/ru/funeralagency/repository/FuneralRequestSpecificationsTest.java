@@ -12,7 +12,6 @@ import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import ru.funeralagency.dto.FuneralRequestFilterDto;
-import ru.funeralagency.model.CeremonyType;
 import ru.funeralagency.model.FuneralRequest;
 import ru.funeralagency.model.RequestStatus;
 
@@ -56,8 +55,8 @@ class FuneralRequestSpecificationsTest {
         FuneralRequestFilterDto filter = new FuneralRequestFilterDto();
         configure.accept(filter);
         FuneralRequestSpecifications.matching(filter).toPredicate(root, query, cb);
-        if ("client".equals(field)) {
-            verify(cb).equal(root.get("client").get("id"), value);
+        if ("client".equals(field) || "ceremonyType".equals(field)) {
+            verify(cb).equal(root.get(field).get("id"), value);
         } else {
             verify(cb).equal(root.get(field), value);
         }
@@ -67,8 +66,8 @@ class FuneralRequestSpecificationsTest {
     static Stream<Arguments> equalityFilters() {
         return Stream.of(
                 Arguments.of((Consumer<FuneralRequestFilterDto>) f -> f.setClient(2L), "client", 2L),
-                Arguments.of((Consumer<FuneralRequestFilterDto>) f -> f.setCeremonyType(CeremonyType.CREMATION),
-                        "ceremonyType", CeremonyType.CREMATION),
+                Arguments.of((Consumer<FuneralRequestFilterDto>) f -> f.setCeremonyTypeId(2L),
+                        "ceremonyType", 2L),
                 Arguments.of((Consumer<FuneralRequestFilterDto>) f -> f.setStatus(RequestStatus.NEW),
                         "status", RequestStatus.NEW),
                 Arguments.of((Consumer<FuneralRequestFilterDto>) f -> f.setUrgent(true), "urgent", true),
@@ -134,7 +133,7 @@ class FuneralRequestSpecificationsTest {
         FuneralRequestFilterDto filter = new FuneralRequestFilterDto();
         filter.setQ("Иванов");
         filter.setClient(1L);
-        filter.setCeremonyType(CeremonyType.BURIAL);
+        filter.setCeremonyTypeId(1L);
         filter.setStatus(RequestStatus.NEW);
         filter.setUrgent(true);
         filter.setPriority(4);

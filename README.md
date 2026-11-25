@@ -33,6 +33,7 @@ createdb -h localhost -p 5432 -U postgres -W funeral_management
 ограничения, индекс и обязательные справочники. Клиенты и заявки не добавляются.
 Затем `V2__extend_funeral_requests.sql` добавляет новые поля заявок,
 а `V3__create_security_tables.sql` создаёт users, user_roles и refresh_sessions.
+`V4__manage_ceremony_types.sql` добавляет code/enabled существующему справочнику типов церемонии.
 Hibernate работает с `spring.jpa.hibernate.ddl-auto=validate` и только проверяет mapping.
 
 Для демонстрационных данных после первого успешного запуска backend можно выполнить:
@@ -58,7 +59,8 @@ psql -h localhost -p 5432 -U postgres -W -d funeral_management -v ON_ERROR_STOP=
 На пустой схеме baseline не создаётся: V1 выполняется как обычная SQL-миграция.
 После baseline применяется V2: существующие строки получают UUID, код заявки,
 priority, updatedAt и начальную version без изменения прежних полей.
-Затем V3 добавляет таблицы аутентификации без изменения бизнес-данных.
+Затем V3 добавляет таблицы аутентификации, V4 расширяет справочник CeremonyType.
+Идентификаторы, названия типов и существующие связи с заявками сохраняются.
 
 При последующих запусках Flyway читает `flyway_schema_history` и применяет только
 новые миграции. Baseline не проверяет все CHECK/FK и данные старой схемы;
@@ -189,6 +191,8 @@ Auth timestamps хранятся в UTC. Смена пароля отзывае�
 | Создание/изменение/архивирование/восстановление заявок | Нет | Да | Да |
 | Физическое удаление заявки | Нет | Нет | Да |
 | Создание/изменение/удаление Client с прежними бизнес-правилами | Нет | Да | Да |
+| GET справочника CeremonyType | Да | Да | Да |
+| Создание/изменение/enable/disable CeremonyType | Нет | Нет | Да |
 | Me и смена собственного пароля | Да | Да | Да |
 
 Без действительного access token защищённые endpoints возвращают 401; при
@@ -240,6 +244,37 @@ PUT    /api/clients/{id}
 DELETE /api/clients/{id}
 ```
 
+### Типы церемонии
+
+```text
+GET  /api/ceremony-types
+GET  /api/ceremony-types/{id}
+POST /api/ceremony-types
+PUT  /api/ceremony-types/{id}
+POST /api/ceremony-types/{id}/enable
+POST /api/ceremony-types/{id}/disable
+```
+
+GET разрешён VIEWER/MANAGER/ADMIN и возвращает также отключённые типы.
+Изменения доступны только ADMIN. POST создаёт включённый тип и возвращает 201
+с Location; PUT/enable/disable возвращают 200 с DTO. Physical DELETE отсутствует.
+
+Создание принимает `code` и `name`; update — только `name`. Code нормализуется
+через trim + uppercase, уникален и после создания не меняется. ID не принимается
+из body. Имя обрезается по краям. Максимумы: code — 50 символов, name — 100.
+Пустые/слишком длинные значения дают 400; дубликат code — 409; неизвестный ID — 404.
+Исходное ограничение уникальности name в БД также сохранено.
+
+V4 сохраняет ID 1/2 и прежние имена: BURIAL / Захоронение, CREMATION / Кремация.
+Для дополнительных старых строк код — LEGACY_<id>. Все старые типы изначально
+enabled=true. Java Long id отображается на исходный PostgreSQL INTEGER через
+JdbcTypeCode; PK, FK и ceremony_type_id не изменены. Допустимый ID — от 1 до 2147483647.
+
+Disable разрешён и для используемого типа: заявки не удаляются и не меняют тип.
+Создание заявки или назначение другого disabled-типа отклоняется с 409.
+Чтение существующей заявки разрешено. При update с прежним ceremonyTypeId
+отключение типа не препятствует изменению остальных полей.
+
 ### Заявки
 
 ```text
@@ -258,7 +293,25 @@ DELETE /api/requests/{uuid}/permanent
 и требуют отдельной адаптации операций просмотра/редактирования/удаления и передачи version.
 Временных Long-id endpoints нет. Будущий web-клиент должен использовать UUID и requestCode.
 В ответ добавлены `uuid`, `requestCode`, `urgent`, `priority`, `archived`, `updatedAt`,
-`version`. Create принимает дополнительный `urgent` (по умолчанию false).
+`version`. Create/update принимают обязательный `ceremonyTypeId`, а не enum code.
+Service загружает тип из справочника, mapper в БД не обращается. В response
+ceremonyType — DTO-объект, например:
+
+```json
+{
+  "ceremonyType": {
+    "id": 1,
+    "code": "BURIAL",
+    "name": "Захоронение",
+    "enabled": true
+  }
+}
+```
+
+Legacy поля ceremonyType с enum-строкой в create/update нет. JavaFX/console-client
+потребуют адаптации этого DTO отдельно.
+
+Create принимает дополнительный `urgent` (по умолчанию false).
 При Update отсутствие `urgent` сохраняет прежнее значение; явное false отключает срочность.
 Update требует `version`, полученную при последнем чтении заявки. Например:
 
@@ -267,7 +320,7 @@ Update требует `version`, полученную при последнем 
   "clientId": 1,
   "deceasedFullName": "Иванов Иван Петрович",
   "ceremonyDate": "2027-01-15",
-  "ceremonyType": "BURIAL",
+  "ceremonyTypeId": 1,
   "status": "CONFIRMED",
   "price": 45000.00,
   "version": 0
@@ -299,7 +352,7 @@ Legacy search/filter/sort также исключают архивные зая�
 |---|---|
 | `q` | Подстрока ФИО умершего, requestCode или имени клиента, без учёта регистра |
 | `client` | Существующий Long ID клиента |
-| `ceremonyType` | `BURIAL` или `CREMATION` |
+| `ceremonyTypeId` | Long ID типа из `/api/ceremony-types`; disabled-типы также доступны для поиска |
 | `status` | Значение RequestStatus |
 | `urgent` | `true`/`false`; отсутствие не фильтрует |
 | `priority` | Сохранённое неотрицательное значение priority |
@@ -341,7 +394,8 @@ GET /api/requests?archived=true&sort=createdAt,desc
 JavaFX/console-client пока не адаптированы к page-ответу основного списка.
 Legacy `/search`, `/filter`, `/sort` сохраняют прежние параметры и ответ-массив,
 используя те же Specifications. Legacy deceasedName ищет только по ФИО умершего;
-legacy filter сохраняет dateFrom/dateTo. Новым клиентам следует использовать
+legacy filter сохраняет dateFrom/dateTo и параметр ceremonyType как code справочника
+(например BURIAL или MEMORIAL); внутри используется тот же фильтр relationship по ID. Новым клиентам следует использовать
 основной GET /api/requests.
 
 Для новой заявки `uuid` создаётся через `UUID.randomUUID()`.
@@ -386,7 +440,7 @@ DEFAULT новых колонок и вычисляемый код позвол�
   "clientId": 1,
   "deceasedFullName": "Иванов Иван Петрович",
   "ceremonyDate": "2026-10-15",
-  "ceremonyType": "BURIAL",
+  "ceremonyTypeId": 1,
   "price": 45000.00,
   "comment": null
 }
@@ -402,8 +456,9 @@ DEFAULT новых колонок и вычисляемый код позвол�
 - нельзя удалить клиента со связанными заявками;
 - телефон и email клиента должны быть уникальными.
 
-Enum `CeremonyType` и `RequestStatus` используют явные `databaseId`. Для связи с
-БД не применяется `ordinal()`: JPA AttributeConverter сохраняет явные числовые ID.
+`RequestStatus` остаётся enum с явными databaseId и прежним AttributeConverter;
+ordinal() не используется. CeremonyType — JPA entity, связанная через существующий
+ceremony_type_id. Старый CeremonyTypeConverter удалён.
 
 ## Обработка ошибок
 
@@ -434,7 +489,7 @@ mvn clean package
 Интеграционные тесты требуют реальную PostgreSQL и переменные `TEST_DB_*`.
 Они используют отдельные временные схемы, Flyway запускается до Hibernate validate;
 таблицы `public` не изменяются. Проверяются V1 на пустой схеме, baseline схемы КР №1
-с сохранением данных и применением V2, JPA CRUD, поиск, фильтры, сортировка и текущий REST API.
+с сохранением данных и применением V2–V4, JPA CRUD, поиск, фильтры, сортировка и текущий REST API.
 Пользователь тестовой БД должен иметь право создавать и удалять тестовые схемы:
 
 ```powershell

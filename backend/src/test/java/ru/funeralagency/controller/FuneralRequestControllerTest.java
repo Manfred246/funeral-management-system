@@ -23,6 +23,7 @@ import ru.funeralagency.model.Client;
 import ru.funeralagency.model.FuneralRequest;
 import ru.funeralagency.model.RequestStatus;
 import ru.funeralagency.repository.ClientRepository;
+import ru.funeralagency.repository.CeremonyTypeRepository;
 import ru.funeralagency.repository.FuneralRequestRepository;
 import ru.funeralagency.service.ExcelExporter;
 import ru.funeralagency.service.FuneralRequestService;
@@ -59,17 +60,20 @@ class FuneralRequestControllerTest {
     @Mock
     private ExcelExporter exporter;
 
+    @Mock
+    private CeremonyTypeRepository ceremonyTypes;
+
     private MockMvc mvc;
     private FuneralRequest stored;
 
     @BeforeEach
     void setUp() {
-        FuneralRequestService service = new FuneralRequestService(requests, clients, new FuneralRequestMapper());
+        FuneralRequestService service = new FuneralRequestService(requests, clients, new FuneralRequestMapper(), ceremonyTypes);
         mvc = MockMvcBuilders.standaloneSetup(
                         new FuneralRequestController(service, new FuneralRequestMapper(), exporter))
                 .setControllerAdvice(new ApiExceptionHandler()).build();
         stored = new FuneralRequest(5L, new Client(1L, "Клиент", "+79991234567", null),
-                "Иван Иванов", LocalDate.now().plusDays(4), CeremonyType.BURIAL,
+                "Иван Иванов", LocalDate.now().plusDays(4), new CeremonyType(1L, "BURIAL", "Захоронение", true),
                 RequestStatus.NEW, new BigDecimal("100.00"), LocalDateTime.of(2026, 1, 1, 12, 0), null);
         stored.setUuid(UUID_VALUE);
         stored.setRequestCode("FR-2026-000005");
@@ -85,7 +89,7 @@ class FuneralRequestControllerTest {
                 .thenAnswer(invocation -> new PageImpl<>(List.of(stored), invocation.getArgument(1), 3));
         mvc.perform(get("/api/requests")
                         .param("q", "FR-2026").param("client", "1")
-                        .param("ceremonyType", "BURIAL").param("status", "NEW")
+                        .param("ceremonyTypeId", "1").param("status", "NEW")
                         .param("urgent", "false").param("priority", "0").param("archived", "false")
                         .param("minPrice", "100").param("maxPrice", "200")
                         .param("page", "1").param("size", "2").param("sort", "price,asc"))
@@ -111,7 +115,7 @@ class FuneralRequestControllerTest {
     @ParameterizedTest
     @ValueSource(strings = {"page=-1", "size=0", "size=-1", "size=101", "page=abc", "size=abc",
             "minPrice=-1", "maxPrice=-1", "minPrice=20&maxPrice=10", "minPrice=abc",
-            "sort=id,asc", "sort=price,up", "sort=price", "status=BAD", "ceremonyType=BAD",
+            "sort=id,asc", "sort=price,up", "sort=price", "status=BAD", "ceremonyTypeId=BAD", "ceremonyTypeId=0", "ceremonyTypeId=4294967297",
             "urgent=BAD", "archived=BAD", "priority=-1", "priority=abc", "client=0"})
     void invalidQueryParametersReturn400WithoutQueryingDatabase(String query) throws Exception {
         mvc.perform(get("/api/requests?" + query))
@@ -130,6 +134,45 @@ class FuneralRequestControllerTest {
                 .andExpect(jsonPath("$.requestCode").value("FR-2026-000005"))
                 .andExpect(jsonPath("$.version").value(3));
         verify(requests, never()).findById(any());
+    }
+
+    @Test
+    void existingRequestWithDisabledTypeStillReturnsNestedTypeDto() throws Exception {
+        stored.getCeremonyType().setEnabled(false);
+        when(requests.findByUuid(UUID_VALUE)).thenReturn(Optional.of(stored));
+        mvc.perform(get("/api/requests/{uuid}", UUID_VALUE)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.ceremonyType.id").value(1))
+                .andExpect(jsonPath("$.ceremonyType.code").value("BURIAL"))
+                .andExpect(jsonPath("$.ceremonyType.enabled").value(false));
+    }
+
+    @Test
+    void createLoadsCustomTypeByIdRatherThanAcceptingAnEnum() throws Exception {
+        CeremonyType custom = new CeremonyType(3L, "MEMORIAL", "Прощание", true);
+        when(clients.findById(1L)).thenReturn(Optional.of(stored.getClient()));
+        when(ceremonyTypes.findById(3L)).thenReturn(Optional.of(custom));
+        when(requests.saveAndFlush(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        mvc.perform(post("/api/requests").contentType(MediaType.APPLICATION_JSON)
+                        .content(updateBody("3").replace("\"ceremonyTypeId\":1", "\"ceremonyTypeId\":3")))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.clientId").value(1))
+                .andExpect(jsonPath("$.ceremonyType.id").value(3))
+                .andExpect(jsonPath("$.ceremonyType.code").value("MEMORIAL"))
+                .andExpect(jsonPath("$.ceremonyType.name").value("Прощание"));
+        verify(ceremonyTypes).findById(3L);
+    }
+
+    @Test
+    void disabledTypeReturns409AndMissingTypeIdReturns400OnCreate() throws Exception {
+        stored.getCeremonyType().setEnabled(false);
+        when(clients.findById(1L)).thenReturn(Optional.of(stored.getClient()));
+        when(ceremonyTypes.findById(1L)).thenReturn(Optional.of(stored.getCeremonyType()));
+        mvc.perform(post("/api/requests").contentType(MediaType.APPLICATION_JSON).content(updateBody("3")))
+                .andExpect(status().isConflict());
+        mvc.perform(post("/api/requests").contentType(MediaType.APPLICATION_JSON)
+                        .content(updateBody("3").replace("\"ceremonyTypeId\":1,", "")))
+                .andExpect(status().isBadRequest());
+        verify(requests, never()).saveAndFlush(any());
     }
 
     @Test
@@ -153,6 +196,7 @@ class FuneralRequestControllerTest {
     @Test
     void createLocationUsesPublicUuid() throws Exception {
         when(clients.findById(1L)).thenReturn(Optional.of(stored.getClient()));
+        when(ceremonyTypes.findById(1L)).thenReturn(Optional.of(stored.getCeremonyType()));
         when(requests.saveAndFlush(any())).thenReturn(stored);
         mvc.perform(post("/api/requests").contentType(MediaType.APPLICATION_JSON).content(updateBody("3")))
                 .andExpect(status().isCreated())
@@ -163,6 +207,7 @@ class FuneralRequestControllerTest {
     void updatesByUuidAndReturnsVersionFromSavedEntity() throws Exception {
         when(requests.findByUuid(UUID_VALUE)).thenReturn(Optional.of(stored));
         when(clients.findById(1L)).thenReturn(Optional.of(stored.getClient()));
+        when(ceremonyTypes.findById(1L)).thenReturn(Optional.of(stored.getCeremonyType()));
         when(requests.saveAndFlush(stored)).thenReturn(stored);
         mvc.perform(put("/api/requests/{uuid}", UUID_VALUE).contentType(MediaType.APPLICATION_JSON)
                         .content(updateBody("3")))
@@ -212,6 +257,7 @@ class FuneralRequestControllerTest {
     void persistenceOptimisticConflictReturnsSafe409(RuntimeException failure) throws Exception {
         when(requests.findByUuid(UUID_VALUE)).thenReturn(Optional.of(stored));
         when(clients.findById(1L)).thenReturn(Optional.of(stored.getClient()));
+        when(ceremonyTypes.findById(1L)).thenReturn(Optional.of(stored.getCeremonyType()));
         when(requests.saveAndFlush(stored)).thenThrow(failure);
         mvc.perform(put("/api/requests/{uuid}", UUID_VALUE).contentType(MediaType.APPLICATION_JSON)
                         .content(updateBody("3")))
@@ -260,7 +306,7 @@ class FuneralRequestControllerTest {
     private String updateBody(String version) {
         return """
                 {"clientId":1,"deceasedFullName":"Иван Иванов","ceremonyDate":"%s",
-                 "ceremonyType":"BURIAL","status":"CONFIRMED","price":200,"version":%s}
+                 "ceremonyTypeId":1,"status":"CONFIRMED","price":200,"version":%s}
                 """.formatted(LocalDate.now().plusDays(4), version);
     }
 }

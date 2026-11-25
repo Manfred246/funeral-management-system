@@ -87,7 +87,7 @@ public class ExcelExporter {
             ceremonyDate.setCellValue(request.getCeremonyDate());
             ceremonyDate.setCellStyle(dateStyle);
         }
-        setTextCell(row, 4, enumName(request.getCeremonyType()));
+        setTextCell(row, 4, request.getCeremonyType() == null ? "" : request.getCeremonyType().getCode());
         setTextCell(row, 5, enumName(request.getStatus()));
         if (request.getPrice() != null) {
             row.createCell(6).setCellValue(request.getPrice().doubleValue());

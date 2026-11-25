@@ -28,8 +28,8 @@ public final class FuneralRequestSpecifications {
             if (filter.getClient() != null) {
                 predicates.add(cb.equal(root.get("client").get("id"), filter.getClient()));
             }
-            if (filter.getCeremonyType() != null) {
-                predicates.add(cb.equal(root.get("ceremonyType"), filter.getCeremonyType()));
+            if (filter.getCeremonyTypeId() != null) {
+                predicates.add(cb.equal(root.get("ceremonyType").get("id"), filter.getCeremonyTypeId()));
             }
             if (filter.getStatus() != null) {
                 predicates.add(cb.equal(root.get("status"), filter.getStatus()));

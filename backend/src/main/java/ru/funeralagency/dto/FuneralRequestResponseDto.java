@@ -1,6 +1,5 @@
 package ru.funeralagency.dto;
 
-import ru.funeralagency.model.CeremonyType;
 import ru.funeralagency.model.RequestStatus;
 
 import java.math.BigDecimal;
@@ -14,7 +13,7 @@ public class FuneralRequestResponseDto {
     private Long clientId;
     private String deceasedFullName;
     private LocalDate ceremonyDate;
-    private CeremonyType ceremonyType;
+    private CeremonyTypeResponseDto ceremonyType;
     private RequestStatus status;
     private BigDecimal price;
     private LocalDateTime createdAt;
@@ -35,7 +34,7 @@ public class FuneralRequestResponseDto {
             Long clientId,
             String deceasedFullName,
             LocalDate ceremonyDate,
-            CeremonyType ceremonyType,
+            CeremonyTypeResponseDto ceremonyType,
             RequestStatus status,
             BigDecimal price,
             LocalDateTime createdAt,
@@ -84,11 +83,11 @@ public class FuneralRequestResponseDto {
         this.ceremonyDate = ceremonyDate;
     }
 
-    public CeremonyType getCeremonyType() {
+    public CeremonyTypeResponseDto getCeremonyType() {
         return ceremonyType;
     }
 
-    public void setCeremonyType(CeremonyType ceremonyType) {
+    public void setCeremonyType(CeremonyTypeResponseDto ceremonyType) {
         this.ceremonyType = ceremonyType;
     }
 

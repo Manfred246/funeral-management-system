@@ -9,6 +9,7 @@ import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import ru.funeralagency.exception.EntityNotFoundException;
+import ru.funeralagency.exception.BusinessException;
 import ru.funeralagency.exception.ValidationException;
 import ru.funeralagency.dto.FuneralRequestFilterDto;
 import ru.funeralagency.dto.FuneralRequestPageDto;
@@ -18,6 +19,7 @@ import ru.funeralagency.model.Client;
 import ru.funeralagency.model.FuneralRequest;
 import ru.funeralagency.model.RequestStatus;
 import ru.funeralagency.repository.ClientRepository;
+import ru.funeralagency.repository.CeremonyTypeRepository;
 import ru.funeralagency.repository.FuneralRequestRepository;
 import ru.funeralagency.repository.FuneralRequestSpecifications;
 import ru.funeralagency.validation.FuneralRequestValidationRules;
@@ -27,6 +29,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 import java.util.UUID;
 
@@ -40,25 +43,33 @@ public class FuneralRequestService {
     private final FuneralRequestRepository requestRepository;
     private final ClientRepository clientRepository;
     private final FuneralRequestMapper requestMapper;
+    private final CeremonyTypeRepository ceremonyTypeRepository;
 
     public FuneralRequestService(
             FuneralRequestRepository requestRepository,
             ClientRepository clientRepository,
-            FuneralRequestMapper requestMapper
+            FuneralRequestMapper requestMapper,
+            CeremonyTypeRepository ceremonyTypeRepository
     ) {
         this.requestRepository = requestRepository;
         this.clientRepository = clientRepository;
         this.requestMapper = requestMapper;
+        this.ceremonyTypeRepository = ceremonyTypeRepository;
     }
 
     @Transactional
-    public FuneralRequest create(FuneralRequest request, Long clientId) {
+    public FuneralRequest create(FuneralRequest request, Long clientId, Long ceremonyTypeId) {
         if (request == null) {
             throw new ValidationException("Заявка не может быть null");
         }
         request.setId(null);
         request.setStatus(RequestStatus.NEW);
         request.setClient(findClient(clientId));
+        CeremonyType type = findCeremonyType(ceremonyTypeId);
+        if (!type.isEnabled()) {
+            throw new BusinessException("Отключённый тип церемонии нельзя назначить заявке");
+        }
+        request.setCeremonyType(type);
         normalizeAndValidate(request);
         request.setPrice(request.getPrice().setScale(2));
         // PostgreSQL TIMESTAMP хранит микросекунды; ответ совпадает с последующим чтением БД.
@@ -107,7 +118,8 @@ public class FuneralRequestService {
     }
 
     @Transactional
-    public FuneralRequest updateByUuid(UUID uuid, FuneralRequest request, Long clientId, Boolean urgent, Long version) {
+    public FuneralRequest updateByUuid(UUID uuid, FuneralRequest request, Long clientId,
+                                       Long ceremonyTypeId, Boolean urgent, Long version) {
         if (request == null) {
             throw new ValidationException("Заявка не может быть null");
         }
@@ -121,6 +133,11 @@ public class FuneralRequestService {
         }
         FuneralRequestValidationRules.validateStatusTransition(existing.getStatus(), request.getStatus());
         request.setClient(findClient(clientId));
+        CeremonyType type = findCeremonyType(ceremonyTypeId);
+        if (!type.isEnabled() && !type.getId().equals(existing.getCeremonyType().getId())) {
+            throw new BusinessException("Отключённый тип церемонии нельзя назначить заявке");
+        }
+        request.setCeremonyType(type);
         FuneralRequestValidationRules.normalize(request);
         FuneralRequestValidationRules.validateForUpdate(request, existing.getCeremonyDate());
         existing.setClient(request.getClient());
@@ -198,7 +215,7 @@ public class FuneralRequestService {
 
     public List<FuneralRequest> filter(
             RequestStatus status,
-            CeremonyType ceremonyType,
+            String ceremonyType,
             LocalDate dateFrom,
             LocalDate dateTo
     ) {
@@ -207,7 +224,12 @@ public class FuneralRequestService {
         }
         FuneralRequestFilterDto filter = new FuneralRequestFilterDto();
         filter.setStatus(status);
-        filter.setCeremonyType(ceremonyType);
+        if (ceremonyType != null) {
+            String code = ceremonyType.trim().toUpperCase(Locale.ROOT);
+            CeremonyType type = ceremonyTypeRepository.findByCode(code)
+                    .orElseThrow(() -> new EntityNotFoundException("Тип церемонии с кодом " + code + " не найден"));
+            filter.setCeremonyTypeId(type.getId());
+        }
         Specification<FuneralRequest> spec = FuneralRequestSpecifications.matching(filter)
                 .and(FuneralRequestSpecifications.ceremonyDateBetween(dateFrom, dateTo));
         return requestRepository.findAll(spec, Sort.by("id"));
@@ -219,6 +241,10 @@ public class FuneralRequestService {
     }
 
     private void validateFilters(FuneralRequestFilterDto filter) {
+        Long typeId = filter.getCeremonyTypeId();
+        if (typeId != null && (typeId <= 0 || typeId > Integer.MAX_VALUE)) {
+            throw new ValidationException("ID типа церемонии должен быть от 1 до " + Integer.MAX_VALUE);
+        }
         if (filter.getClient() != null && filter.getClient() <= 0) {
             throw new ValidationException("ID клиента должен быть положительным числом");
         }
@@ -260,5 +286,13 @@ public class FuneralRequestService {
         }
         return clientRepository.findById(clientId)
                 .orElseThrow(() -> new ValidationException("Нельзя создать заявку для несуществующего клиента"));
+    }
+
+    private CeremonyType findCeremonyType(Long id) {
+        if (id == null || id <= 0 || id > Integer.MAX_VALUE) {
+            throw new ValidationException("ID типа церемонии должен быть от 1 до " + Integer.MAX_VALUE);
+        }
+        return ceremonyTypeRepository.findById(id).orElseThrow(() -> new EntityNotFoundException(
+                "Тип церемонии с ID " + id + " не найден"));
     }
 }

@@ -21,7 +21,6 @@ import ru.funeralagency.dto.FuneralRequestUpdateDto;
 import ru.funeralagency.dto.FuneralRequestFilterDto;
 import ru.funeralagency.dto.FuneralRequestPageDto;
 import ru.funeralagency.mapper.FuneralRequestMapper;
-import ru.funeralagency.model.CeremonyType;
 import ru.funeralagency.model.FuneralRequest;
 import ru.funeralagency.model.RequestStatus;
 import ru.funeralagency.service.ExcelExporter;
@@ -57,9 +56,10 @@ public class FuneralRequestController {
 
     @PostMapping
     public ResponseEntity<FuneralRequestResponseDto> create(
-            @RequestBody FuneralRequestCreateDto dto
+            @Valid @RequestBody FuneralRequestCreateDto dto
     ) {
-        FuneralRequest created = requestService.create(requestMapper.toEntity(dto), dto.getClientId());
+        FuneralRequest created = requestService.create(
+                requestMapper.toEntity(dto), dto.getClientId(), dto.getCeremonyTypeId());
         return ResponseEntity
                 .created(URI.create("/api/requests/" + created.getUuid()))
                 .body(requestMapper.toResponseDto(created));
@@ -69,7 +69,7 @@ public class FuneralRequestController {
     public FuneralRequestPageDto findAll(
             @RequestParam(required = false) String q,
             @RequestParam(required = false) Long client,
-            @RequestParam(required = false) CeremonyType ceremonyType,
+            @RequestParam(required = false) Long ceremonyTypeId,
             @RequestParam(required = false) RequestStatus status,
             @RequestParam(required = false) Boolean urgent,
             @RequestParam(required = false) Integer priority,
@@ -83,7 +83,7 @@ public class FuneralRequestController {
         FuneralRequestFilterDto filter = new FuneralRequestFilterDto();
         filter.setQ(q);
         filter.setClient(client);
-        filter.setCeremonyType(ceremonyType);
+        filter.setCeremonyTypeId(ceremonyTypeId);
         filter.setStatus(status);
         filter.setUrgent(urgent);
         filter.setPriority(priority);
@@ -104,7 +104,7 @@ public class FuneralRequestController {
             @Valid @RequestBody FuneralRequestUpdateDto dto
     ) {
         FuneralRequest updated = requestService.updateByUuid(
-                uuid, requestMapper.toEntity(dto), dto.getClientId(), dto.getUrgent(), dto.getVersion());
+                uuid, requestMapper.toEntity(dto), dto.getClientId(), dto.getCeremonyTypeId(), dto.getUrgent(), dto.getVersion());
         return requestMapper.toResponseDto(updated);
     }
 
@@ -136,7 +136,7 @@ public class FuneralRequestController {
     @GetMapping("/filter")
     public List<FuneralRequestResponseDto> filter(
             @RequestParam(required = false) RequestStatus status,
-            @RequestParam(required = false) CeremonyType ceremonyType,
+            @RequestParam(required = false) String ceremonyType,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
             LocalDate dateFrom,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)

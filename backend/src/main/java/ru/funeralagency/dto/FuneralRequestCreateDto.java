@@ -1,6 +1,7 @@
 package ru.funeralagency.dto;
 
-import ru.funeralagency.model.CeremonyType;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Positive;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -10,7 +11,11 @@ public class FuneralRequestCreateDto {
     private Long clientId;
     private String deceasedFullName;
     private LocalDate ceremonyDate;
-    private CeremonyType ceremonyType;
+
+    @NotNull(message = "Тип церемонии обязателен")
+    @Positive(message = "ID типа церемонии должен быть положительным")
+    private Long ceremonyTypeId;
+
     private BigDecimal price;
     private String comment;
     private boolean urgent;
@@ -22,14 +27,14 @@ public class FuneralRequestCreateDto {
             Long clientId,
             String deceasedFullName,
             LocalDate ceremonyDate,
-            CeremonyType ceremonyType,
+            Long ceremonyTypeId,
             BigDecimal price,
             String comment
     ) {
         this.clientId = clientId;
         this.deceasedFullName = deceasedFullName;
         this.ceremonyDate = ceremonyDate;
-        this.ceremonyType = ceremonyType;
+        this.ceremonyTypeId = ceremonyTypeId;
         this.price = price;
         this.comment = comment;
     }
@@ -58,12 +63,12 @@ public class FuneralRequestCreateDto {
         this.ceremonyDate = ceremonyDate;
     }
 
-    public CeremonyType getCeremonyType() {
-        return ceremonyType;
+    public Long getCeremonyTypeId() {
+        return ceremonyTypeId;
     }
 
-    public void setCeremonyType(CeremonyType ceremonyType) {
-        this.ceremonyType = ceremonyType;
+    public void setCeremonyTypeId(Long ceremonyTypeId) {
+        this.ceremonyTypeId = ceremonyTypeId;
     }
 
     public BigDecimal getPrice() {

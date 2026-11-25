@@ -23,12 +23,15 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RestController;
 import ru.funeralagency.config.SecurityConfig;
 import ru.funeralagency.controller.AuthController;
+import ru.funeralagency.controller.CeremonyTypeController;
 import ru.funeralagency.dto.AuthTokensDto;
 import ru.funeralagency.dto.AuthUserDto;
 import ru.funeralagency.model.Role;
 import ru.funeralagency.model.User;
+import ru.funeralagency.model.CeremonyType;
 import ru.funeralagency.repository.UserRepository;
 import ru.funeralagency.service.AuthService;
+import ru.funeralagency.service.CeremonyTypeService;
 
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
@@ -43,13 +46,15 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @WebMvcTest(AuthController.class)
 @ActiveProfiles("test")
-@Import({SecurityConfig.class, JwtService.class, SecurityErrorHandler.class, SecurityWebTest.BusinessController.class})
+@Import({SecurityConfig.class, JwtService.class, SecurityErrorHandler.class,
+        CeremonyTypeController.class, SecurityWebTest.BusinessController.class})
 class SecurityWebTest {
     @Autowired private MockMvc mvc;
     @Autowired private JwtService jwt;
     @Value("${app.jwt.secret}") private String secret;
     @MockitoBean private UserRepository users;
     @MockitoBean private AuthService auth;
+    @MockitoBean private CeremonyTypeService ceremonyTypes;
     private User user;
 
     @BeforeEach
@@ -87,6 +92,34 @@ class SecurityWebTest {
     void permissionsAreEnforcedByRealSecurityChain(Role role, String method, String path, int expected) throws Exception {
         mvc.perform(request(HttpMethod.valueOf(method), path).header("Authorization", "Bearer " + token(role)))
                 .andExpect(status().is(expected));
+    }
+
+    @ParameterizedTest
+    @CsvSource({"VIEWER,GET,/api/ceremony-types,200", "MANAGER,GET,/api/ceremony-types,200",
+            "ADMIN,GET,/api/ceremony-types,200", "VIEWER,GET,/api/ceremony-types/1,200",
+            "MANAGER,GET,/api/ceremony-types/1,200", "ADMIN,GET,/api/ceremony-types/1,200",
+            "VIEWER,POST,/api/ceremony-types,403", "MANAGER,POST,/api/ceremony-types,403",
+            "ADMIN,POST,/api/ceremony-types,201", "VIEWER,PUT,/api/ceremony-types/1,403",
+            "MANAGER,PUT,/api/ceremony-types/1,403", "ADMIN,PUT,/api/ceremony-types/1,200",
+            "VIEWER,POST,/api/ceremony-types/1/enable,403", "MANAGER,POST,/api/ceremony-types/1/enable,403",
+            "ADMIN,POST,/api/ceremony-types/1/enable,200", "VIEWER,POST,/api/ceremony-types/1/disable,403",
+            "MANAGER,POST,/api/ceremony-types/1/disable,403", "ADMIN,POST,/api/ceremony-types/1/disable,200"})
+    void ceremonyTypePermissionsUseExistingSecurityChain(Role role, String method, String path, int expected)
+            throws Exception {
+        CeremonyType type = new CeremonyType(1L, "BURIAL", "Захоронение", true);
+        when(ceremonyTypes.getAll()).thenReturn(List.of(type));
+        when(ceremonyTypes.getById(1L)).thenReturn(type);
+        when(ceremonyTypes.create("BURIAL", "Захоронение")).thenReturn(type);
+        when(ceremonyTypes.update(1L, "Захоронение")).thenReturn(type);
+        when(ceremonyTypes.enable(1L)).thenReturn(type);
+        when(ceremonyTypes.disable(1L)).thenReturn(type);
+        mvc.perform(request(HttpMethod.valueOf(method), path).header("Authorization", "Bearer " + token(role))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"code\":\"BURIAL\",\"name\":\"Захоронение\"}"))
+                .andExpect(status().is(expected));
+        if (expected == 403) {
+            verifyNoInteractions(ceremonyTypes);
+        }
     }
 
     @Test

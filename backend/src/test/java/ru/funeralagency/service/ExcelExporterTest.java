@@ -33,7 +33,7 @@ class ExcelExporterTest {
                 new Client(3L, "Клиент", "+79991234567", null),
                 "Иванов Иван Иванович",
                 LocalDate.of(2027, 1, 15),
-                CeremonyType.BURIAL,
+                new CeremonyType(1L, "BURIAL", "Захоронение", true),
                 RequestStatus.NEW,
                 new BigDecimal("25000.50"),
                 LocalDateTime.of(2026, 9, 22, 12, 0),
@@ -51,6 +51,7 @@ class ExcelExporterTest {
                     workbook.getSheetAt(0).getRow(1).getCell(2).getStringCellValue()
             );
             assertEquals(25000.50, workbook.getSheetAt(0).getRow(1).getCell(6).getNumericCellValue());
+            assertEquals("BURIAL", workbook.getSheetAt(0).getRow(1).getCell(4).getStringCellValue());
         }
     }
 }

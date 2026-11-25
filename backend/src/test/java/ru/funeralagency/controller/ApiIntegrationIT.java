@@ -101,6 +101,9 @@ class ApiIntegrationIT {
             statement.execute("TRUNCATE funeral_requests, clients, refresh_sessions, user_roles, users RESTART IDENTITY");
             Path seed = Path.of(System.getProperty("project.root"), "database", "seed.sql");
             statement.execute(Files.readString(seed));
+            statement.execute("DELETE FROM ceremony_types WHERE id NOT IN (1, 2)");
+            statement.execute("UPDATE ceremony_types SET enabled = true, name = CASE id WHEN 1 THEN 'Захоронение' ELSE 'Кремация' END");
+            statement.execute("ALTER TABLE ceremony_types ALTER COLUMN id RESTART WITH 3");
         }
         User admin = new User();
         admin.setLogin("integration-admin");
@@ -380,6 +383,60 @@ class ApiIntegrationIT {
     }
 
     @Test
+    void managedCeremonyTypeAndRequestRelationshipRoundTripThroughPostgres() throws Exception {
+        mockMvc.perform(get("/api/ceremony-types")).andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(2))
+                .andExpect(jsonPath("$[0].code").value("BURIAL"))
+                .andExpect(jsonPath("$[1].code").value("CREMATION"));
+        String typeBody = mockMvc.perform(post("/api/ceremony-types").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"code\":\" memorial \",\"name\":\"Прощание\"}"))
+                .andExpect(status().isCreated()).andExpect(jsonPath("$.code").value("MEMORIAL"))
+                .andReturn().getResponse().getContentAsString();
+        long typeId = objectMapper.readTree(typeBody).get("id").asLong();
+        mockMvc.perform(put("/api/ceremony-types/{id}", typeId).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"Новое прощание\",\"code\":\"CHANGED\",\"id\":999}"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.code").value("MEMORIAL"));
+        String requestBody = mockMvc.perform(post("/api/requests").contentType(MediaType.APPLICATION_JSON)
+                        .content(requestBodyForType(typeId, 0)))
+                .andExpect(status().isCreated()).andExpect(jsonPath("$.ceremonyType.id").value(typeId))
+                .andReturn().getResponse().getContentAsString();
+        var created = objectMapper.readTree(requestBody);
+        String url = "/api/requests/" + created.get("uuid").asText();
+        mockMvc.perform(post("/api/ceremony-types/{id}/disable", typeId))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.enabled").value(false));
+        mockMvc.perform(get(url)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.ceremonyType.name").value("Новое прощание"))
+                .andExpect(jsonPath("$.ceremonyType.enabled").value(false));
+        mockMvc.perform(put(url).contentType(MediaType.APPLICATION_JSON).content(requestBodyForType(typeId, 0)))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.version").value(1));
+        mockMvc.perform(post("/api/requests").contentType(MediaType.APPLICATION_JSON)
+                        .content(requestBodyForType(typeId, 0))).andExpect(status().isConflict());
+        mockMvc.perform(post("/api/requests").contentType(MediaType.APPLICATION_JSON)
+                        .content(requestBodyForType(999, 0))).andExpect(status().isNotFound());
+        mockMvc.perform(put(url).contentType(MediaType.APPLICATION_JSON).content(requestBodyForType(2, 1)))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.ceremonyType.code").value("CREMATION"))
+                .andExpect(jsonPath("$.requestCode").value(created.get("requestCode").asText()));
+        mockMvc.perform(post("/api/ceremony-types/{id}/enable", typeId))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.enabled").value(true));
+        mockMvc.perform(post("/api/requests").contentType(MediaType.APPLICATION_JSON)
+                        .content(requestBodyForType(typeId, 0))).andExpect(status().isCreated());
+        mockMvc.perform(get("/api/requests").param("ceremonyTypeId", Long.toString(typeId)))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.totalElements").value(1));
+        mockMvc.perform(get("/api/requests/filter").param("ceremonyType", "memorial"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.length()").value(1));
+        mockMvc.perform(get("/api/statistics")).andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalRequests").value(14));
+    }
+
+    private String requestBodyForType(long typeId, long version) throws Exception {
+        var body = (com.fasterxml.jackson.databind.node.ObjectNode) objectMapper.readTree(
+                requestBody(1, "100.00", "CONFIRMED"));
+        body.put("ceremonyTypeId", typeId);
+        body.put("version", version);
+        return body.toString();
+    }
+
+    @Test
     void exportsReadableXlsx() throws Exception {
         byte[] bytes = mockMvc.perform(get("/api/requests/export"))
                 .andExpect(status().isOk())
@@ -425,7 +482,7 @@ class ApiIntegrationIT {
     private String requestBody(long clientId, String price, String status) {
         return """
                 {"clientId":%d,"deceasedFullName":"Тестовый умерший","ceremonyDate":"%s",
-                 "ceremonyType":"BURIAL","price":%s,"status":%s,"comment":"Тест"}
+                 "ceremonyTypeId":1,"price":%s,"status":%s,"comment":"Тест"}
                 """.formatted(clientId, LocalDate.now().plusDays(7), price,
                 status == null ? "null" : "\"" + status + "\"");
     }
@@ -443,7 +500,7 @@ class ApiIntegrationIT {
                   "clientId": %d,
                   "deceasedFullName": "Пётр Петров",
                   "ceremonyDate": "%s",
-                  "ceremonyType": "BURIAL",
+                  "ceremonyTypeId": 1,
                   "price": 10000,
                   "comment": "Тестовая заявка"
                 }

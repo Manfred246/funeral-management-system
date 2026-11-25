@@ -25,7 +25,7 @@ class FuneralRequestMapperTest {
                 4L,
                 "  Иванов   Иван Иванович ",
                 LocalDate.of(2027, 2, 1),
-                CeremonyType.BURIAL,
+                1L,
                 new BigDecimal("12000.00"),
                 "  "
         );
@@ -34,6 +34,8 @@ class FuneralRequestMapperTest {
         FuneralRequest request = mapper.toEntity(dto);
 
         assertNull(request.getClient());
+        assertNull(request.getCeremonyType());
+        assertEquals(1L, dto.getCeremonyTypeId());
         assertEquals(dto.getDeceasedFullName(), request.getDeceasedFullName());
         assertNull(request.getId());
         assertNull(request.getStatus());
@@ -55,7 +57,7 @@ class FuneralRequestMapperTest {
                 new Client(4L, "Клиент", "+79991234567", null),
                 "Иванов Иван Иванович",
                 LocalDate.of(2027, 2, 1),
-                CeremonyType.CREMATION,
+                new CeremonyType(2L, "CREMATION", "Кремация", true),
                 RequestStatus.NEW,
                 new BigDecimal("12000.00"),
                 createdAt,
@@ -83,5 +85,8 @@ class FuneralRequestMapperTest {
         assertEquals(2, response.getPriority());
         assertEquals(createdAt.plusDays(1), response.getUpdatedAt());
         assertEquals(3L, response.getVersion());
+        assertEquals(2L, response.getCeremonyType().id());
+        assertEquals("CREMATION", response.getCeremonyType().code());
+        assertEquals("Кремация", response.getCeremonyType().name());
     }
 }

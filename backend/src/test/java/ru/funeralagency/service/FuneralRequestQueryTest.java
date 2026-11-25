@@ -19,6 +19,7 @@ import ru.funeralagency.mapper.FuneralRequestMapper;
 import ru.funeralagency.model.Client;
 import ru.funeralagency.model.FuneralRequest;
 import ru.funeralagency.repository.ClientRepository;
+import ru.funeralagency.repository.CeremonyTypeRepository;
 import ru.funeralagency.repository.FuneralRequestRepository;
 
 import java.math.BigDecimal;
@@ -34,11 +35,14 @@ import static org.mockito.Mockito.*;
 class FuneralRequestQueryTest {
     @Mock private FuneralRequestRepository requests;
     @Mock private ClientRepository clients;
+    @Mock
+    private CeremonyTypeRepository ceremonyTypes;
+
     private FuneralRequestService service;
 
     @BeforeEach
     void setUp() {
-        service = new FuneralRequestService(requests, clients, new FuneralRequestMapper());
+        service = new FuneralRequestService(requests, clients, new FuneralRequestMapper(), ceremonyTypes);
     }
 
     @ParameterizedTest
