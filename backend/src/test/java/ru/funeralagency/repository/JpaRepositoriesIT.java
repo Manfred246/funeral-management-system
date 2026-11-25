@@ -1,5 +1,7 @@
 package ru.funeralagency.repository;
 
+import jakarta.persistence.EntityManagerFactory;
+import jakarta.persistence.OptimisticLockException;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
@@ -218,6 +220,40 @@ class JpaRepositoriesIT {
         assertEquals(1L, read.getVersion());
         requests.deleteById(saved.getId());
         assertTrue(requests.findById(saved.getId()).isEmpty());
+    }
+
+    @Test
+    void overlappingTransactionsRejectStaleVersionInsteadOfLosingUpdate() {
+        FuneralRequest saved = requests.saveAndFlush(newRequest());
+        EntityManagerFactory factory = context.getBean(EntityManagerFactory.class);
+        var first = factory.createEntityManager();
+        var second = factory.createEntityManager();
+        try {
+            first.getTransaction().begin();
+            second.getTransaction().begin();
+            FuneralRequest firstCopy = first.find(FuneralRequest.class, saved.getId());
+            FuneralRequest secondCopy = second.find(FuneralRequest.class, saved.getId());
+            assertEquals(firstCopy.getVersion(), secondCopy.getVersion());
+
+            firstCopy.setComment("Первое изменение");
+            first.getTransaction().commit();
+            secondCopy.setComment("Второе изменение");
+            assertThrows(OptimisticLockException.class, second::flush);
+
+            FuneralRequest read = requests.findByUuid(saved.getUuid()).orElseThrow();
+            assertEquals("Первое изменение", read.getComment());
+            assertEquals(saved.getVersion() + 1, read.getVersion());
+            assertEquals(saved.getRequestCode(), read.getRequestCode());
+        } finally {
+            if (first.getTransaction().isActive()) {
+                first.getTransaction().rollback();
+            }
+            if (second.getTransaction().isActive()) {
+                second.getTransaction().rollback();
+            }
+            first.close();
+            second.close();
+        }
     }
 
     @Test

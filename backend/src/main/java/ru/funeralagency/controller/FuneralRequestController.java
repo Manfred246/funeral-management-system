@@ -1,5 +1,6 @@
 package ru.funeralagency.controller;
 
+import jakarta.validation.Valid;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ContentDisposition;
 import org.springframework.http.HttpHeaders;
@@ -27,6 +28,7 @@ import ru.funeralagency.service.FuneralRequestService;
 import java.net.URI;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/requests")
@@ -56,7 +58,7 @@ public class FuneralRequestController {
     ) {
         FuneralRequest created = requestService.create(requestMapper.toEntity(dto), dto.getClientId());
         return ResponseEntity
-                .created(URI.create("/api/requests/" + created.getId()))
+                .created(URI.create("/api/requests/" + created.getUuid()))
                 .body(requestMapper.toResponseDto(created));
     }
 
@@ -65,23 +67,35 @@ public class FuneralRequestController {
         return requestMapper.toResponseDtoList(requestService.findAll());
     }
 
-    @GetMapping("/{id}")
-    public FuneralRequestResponseDto findById(@PathVariable Long id) {
-        return requestMapper.toResponseDto(requestService.findById(id));
+    @GetMapping("/{uuid}")
+    public FuneralRequestResponseDto getByUuid(@PathVariable UUID uuid) {
+        return requestMapper.toResponseDto(requestService.getByUuid(uuid));
     }
 
-    @PutMapping("/{id}")
+    @PutMapping("/{uuid}")
     public FuneralRequestResponseDto update(
-            @PathVariable Long id,
-            @RequestBody FuneralRequestUpdateDto dto
+            @PathVariable UUID uuid,
+            @Valid @RequestBody FuneralRequestUpdateDto dto
     ) {
-        FuneralRequest updated = requestService.update(id, requestMapper.toEntity(dto), dto.getClientId(), dto.getUrgent());
+        FuneralRequest updated = requestService.updateByUuid(
+                uuid, requestMapper.toEntity(dto), dto.getClientId(), dto.getUrgent(), dto.getVersion());
         return requestMapper.toResponseDto(updated);
     }
 
-    @DeleteMapping("/{id}")
-    public ResponseEntity<Void> deleteById(@PathVariable Long id) {
-        requestService.deleteById(id);
+    @DeleteMapping("/{uuid}")
+    public ResponseEntity<Void> archive(@PathVariable UUID uuid) {
+        requestService.archiveByUuid(uuid);
+        return ResponseEntity.noContent().build();
+    }
+
+    @PostMapping("/{uuid}/restore")
+    public FuneralRequestResponseDto restore(@PathVariable UUID uuid) {
+        return requestMapper.toResponseDto(requestService.restoreByUuid(uuid));
+    }
+
+    @DeleteMapping("/{uuid}/permanent")
+    public ResponseEntity<Void> deletePermanently(@PathVariable UUID uuid) {
+        requestService.deletePermanentlyByUuid(uuid);
         return ResponseEntity.noContent().build();
     }
 

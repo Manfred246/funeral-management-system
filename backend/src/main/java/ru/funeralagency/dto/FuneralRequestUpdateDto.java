@@ -1,5 +1,7 @@
 package ru.funeralagency.dto;
 
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.PositiveOrZero;
 import ru.funeralagency.model.CeremonyType;
 import ru.funeralagency.model.RequestStatus;
 
@@ -16,6 +18,10 @@ public class FuneralRequestUpdateDto {
     private BigDecimal price;
     private String comment;
     private Boolean urgent;
+
+    @NotNull(message = "Версия заявки обязательна")
+    @PositiveOrZero(message = "Версия заявки не может быть отрицательной")
+    private Long version;
 
     public FuneralRequestUpdateDto() {
     }
@@ -100,5 +106,13 @@ public class FuneralRequestUpdateDto {
 
     public void setUrgent(Boolean urgent) {
         this.urgent = urgent;
+    }
+
+    public Long getVersion() {
+        return version;
+    }
+
+    public void setVersion(Long version) {
+        this.version = version;
     }
 }

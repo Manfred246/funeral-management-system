@@ -1,5 +1,6 @@
 package ru.funeralagency.service;
 
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -56,25 +57,32 @@ public class FuneralRequestService {
     }
 
     public List<FuneralRequest> findAll() {
-        return requestRepository.findAllByOrderByIdAsc();
+        return requestRepository.findByArchivedFalseOrderByIdAsc();
     }
 
-    public FuneralRequest findById(Long id) {
-        validateId(id);
-        return requestRepository.findById(id)
+    public FuneralRequest getByUuid(UUID uuid) {
+        if (uuid == null) {
+            throw new ValidationException("UUID заявки обязателен");
+        }
+        return requestRepository.findByUuid(uuid)
                 .orElseThrow(() -> new EntityNotFoundException(
-                        "Заявка с ID " + id + " не найдена"
+                        "Заявка с UUID " + uuid + " не найдена"
                 ));
     }
 
     @Transactional
-    public FuneralRequest update(Long id, FuneralRequest request, Long clientId, Boolean urgent) {
-        validateId(id);
+    public FuneralRequest updateByUuid(UUID uuid, FuneralRequest request, Long clientId, Boolean urgent, Long version) {
         if (request == null) {
             throw new ValidationException("Заявка не может быть null");
         }
 
-        FuneralRequest existing = findById(id);
+        FuneralRequest existing = getByUuid(uuid);
+        if (version == null || version < 0) {
+            throw new ValidationException("Укажите неотрицательную версию заявки");
+        }
+        if (!version.equals(existing.getVersion())) {
+            throw new OptimisticLockingFailureException("Версия заявки устарела");
+        }
         FuneralRequestValidationRules.validateStatusTransition(existing.getStatus(), request.getStatus());
         request.setClient(findClient(clientId));
         FuneralRequestValidationRules.normalize(request);
@@ -86,7 +94,7 @@ public class FuneralRequestService {
         existing.setStatus(request.getStatus());
         existing.setPrice(request.getPrice().setScale(2));
         existing.setComment(request.getComment());
-        // Старые клиенты не знают urgent; отсутствие поля не должно сбрасывать срочность.
+        // Отсутствующее поле urgent сохраняет прежнее значение.
         if (urgent != null) {
             existing.setUrgent(urgent);
         }
@@ -108,8 +116,29 @@ public class FuneralRequestService {
     }
 
     @Transactional
-    public void deleteById(Long id) {
-        FuneralRequest request = findById(id);
+    public void archiveByUuid(UUID uuid) {
+        FuneralRequest request = getByUuid(uuid);
+        if (!request.isArchived()) {
+            request.setArchived(true);
+            request.setUpdatedAt(LocalDateTime.now().truncatedTo(ChronoUnit.MICROS));
+            requestRepository.saveAndFlush(request);
+        }
+    }
+
+    @Transactional
+    public FuneralRequest restoreByUuid(UUID uuid) {
+        FuneralRequest request = getByUuid(uuid);
+        if (request.isArchived()) {
+            request.setArchived(false);
+            request.setUpdatedAt(LocalDateTime.now().truncatedTo(ChronoUnit.MICROS));
+            return requestRepository.saveAndFlush(request);
+        }
+        return request;
+    }
+
+    @Transactional
+    public void deletePermanentlyByUuid(UUID uuid) {
+        FuneralRequest request = getByUuid(uuid);
         requestRepository.delete(request);
         requestRepository.flush();
     }
@@ -161,11 +190,5 @@ public class FuneralRequestService {
         }
         return clientRepository.findById(clientId)
                 .orElseThrow(() -> new ValidationException("Нельзя создать заявку для несуществующего клиента"));
-    }
-
-    private void validateId(Long id) {
-        if (id == null || id <= 0) {
-            throw new ValidationException("ID заявки должен быть положительным числом");
-        }
     }
 }

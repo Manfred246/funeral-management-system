@@ -137,16 +137,50 @@ DELETE /api/clients/{id}
 ```text
 POST   /api/requests
 GET    /api/requests
-GET    /api/requests/{id}
-PUT    /api/requests/{id}
-DELETE /api/requests/{id}
+GET    /api/requests/{uuid}
+PUT    /api/requests/{uuid}
+DELETE /api/requests/{uuid}
+POST   /api/requests/{uuid}/restore
+DELETE /api/requests/{uuid}/permanent
 ```
 
-Заявка сохраняет внутренний `Long id`; URL и обычный DELETE пока работают как раньше.
+Публичные URL заявок используют UUID. POST возвращает Location с UUID созданной заявки.
+Заявка сохраняет внутренний `Long id`; поле `id` пока остаётся в response DTO
+для отображения в старых клиентах. JavaFX и console-client ещё используют Long-id URL
+и требуют отдельной адаптации операций просмотра/редактирования/удаления и передачи version.
+Временных Long-id endpoints нет. Будущий web-клиент должен использовать UUID и requestCode.
 В ответ добавлены `uuid`, `requestCode`, `urgent`, `priority`, `archived`, `updatedAt`,
 `version`. Create принимает дополнительный `urgent` (по умолчанию false).
 При Update отсутствие `urgent` сохраняет прежнее значение; явное false отключает срочность.
+Update требует `version`, полученную при последнем чтении заявки. Например:
+
+```json
+{
+  "clientId": 1,
+  "deceasedFullName": "Иванов Иван Петрович",
+  "ceremonyDate": "2027-01-15",
+  "ceremonyType": "BURIAL",
+  "status": "CONFIRMED",
+  "price": 45000.00,
+  "version": 0
+}
+```
+
+Отсутствующая/null или отрицательная version возвращает 400. Устаревшая version
+возвращает 409. Ответ успешного PUT содержит актуальную version после сохранения.
+Create не принимает version; mapper не копирует входную version в entity.
 Остальные новые поля назначаются сервером и не принимаются из тела запроса.
+
+Обычный DELETE архивирует заявку (`archived=true`) и возвращает 204, строка остаётся
+в БД и доступна через GET по UUID. Restore устанавливает `archived=false` и возвращает
+200 с DTO. Оба действия обновляют updatedAt; Hibernate увеличивает @Version.
+Повторное архивирование/восстановление идемпотентно: данные, updatedAt и version
+не меняются, если состояние уже нужное. Permanent DELETE физически удаляет строку
+и возвращает 204; дальнейший GET возвращает 404.
+
+Обычный GET /api/requests возвращает только неархивированные заявки; текущий XLSX
+export использует этот же список. Существующие search/filter/sort и статистика
+до ЭТАПА 4 сохраняют прежнее поведение и учитывают также архивные записи.
 
 Для новой заявки `uuid` создаётся через `UUID.randomUUID()`.
 Код имеет формат `FR-{год createdAt}-{id, минимум 6 цифр}`, например `FR-2026-000015`.
@@ -215,11 +249,16 @@ REST API возвращает единый JSON-ответ без SQL и stack t
 
 - `400 Bad Request` — неправильные входные данные;
 - `404 Not Found` — запись не найдена;
-- `409 Conflict` — нарушение бизнес-правила или уникальности;
+- `409 Conflict` — нарушение бизнес-правила, уникальности или optimistic locking;
 - `500 Internal Server Error` — ошибка БД или сервера.
 
 Консольный клиент обрабатывает неверные числа, даты, цены, статусы, ошибки API и
 недоступность backend без аварийного завершения.
+
+При конфликте version, включая гонку записей после предварительной проверки,
+backend возвращает 409 с сообщением:
+«Запись была изменена другим пользователем. Обновите данные и повторите попытку.»
+Клиент должен перечитать заявку и повторить изменение с актуальной version.
 
 ## Тесты и сборка
 

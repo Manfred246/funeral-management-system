@@ -16,6 +16,7 @@ import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import ru.funeralagency.Main;
+import ru.funeralagency.repository.FuneralRequestRepository;
 
 import java.io.ByteArrayInputStream;
 import java.nio.file.Files;
@@ -273,24 +274,64 @@ class ApiIntegrationIT {
     }
 
     @Test
-    void requestCrudReturnsStoredPriceAndPreservesCreationTime() throws Exception {
-        String response = mockMvc.perform(post("/api/requests").contentType(MediaType.APPLICATION_JSON)
+    void uuidLifecyclePreservesIdentityAndIncrementsVersionInPostgres() throws Exception {
+        var result = mockMvc.perform(post("/api/requests").contentType(MediaType.APPLICATION_JSON)
                         .content(requestBody(1, "100.1200", null)))
                 .andExpect(status().isCreated()).andExpect(jsonPath("$.price").value(100.12))
                 .andExpect(jsonPath("$.status").value("NEW"))
-                .andReturn().getResponse().getContentAsString();
-        JsonNode created = objectMapper.readTree(response);
-        long id = created.get("id").asLong();
+                .andExpect(jsonPath("$.version").value(0))
+                .andReturn();
+        JsonNode created = objectMapper.readTree(result.getResponse().getContentAsString());
+        String uuid = created.get("uuid").asText();
+        String url = "/api/requests/" + uuid;
+        assertEquals(url, result.getResponse().getHeader("Location"));
         String createdAt = created.get("createdAt").asText();
-        mockMvc.perform(put("/api/requests/{id}", id).contentType(MediaType.APPLICATION_JSON)
-                        .content(requestBody(1, "200.5000", "CONFIRMED")))
+        String code = created.get("requestCode").asText();
+        FuneralRequestRepository requests = context.getBean(FuneralRequestRepository.class);
+
+        mockMvc.perform(put(url).contentType(MediaType.APPLICATION_JSON)
+                        .content(updateBody(1, "200.5000", "CONFIRMED", 0)))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.price").value(200.50))
-                .andExpect(jsonPath("$.createdAt").value(createdAt));
-        mockMvc.perform(get("/api/requests/{id}", id))
-                .andExpect(status().isOk()).andExpect(jsonPath("$.price").value(200.50))
-                .andExpect(jsonPath("$.status").value("CONFIRMED"));
-        mockMvc.perform(delete("/api/requests/{id}", id)).andExpect(status().isNoContent());
-        mockMvc.perform(get("/api/requests/{id}", id)).andExpect(status().isNotFound());
+                .andExpect(jsonPath("$.version").value(1))
+                .andExpect(jsonPath("$.createdAt").value(createdAt))
+                .andExpect(jsonPath("$.uuid").value(uuid))
+                .andExpect(jsonPath("$.requestCode").value(code));
+        mockMvc.perform(put(url).contentType(MediaType.APPLICATION_JSON)
+                        .content(updateBody(1, "999.00", "CONFIRMED", 0)))
+                .andExpect(status().isConflict());
+        mockMvc.perform(get(url)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.price").value(200.50))
+                .andExpect(jsonPath("$.version").value(1));
+
+        mockMvc.perform(delete(url)).andExpect(status().isNoContent());
+        assertTrue(requests.findByUuid(UUID.fromString(uuid)).orElseThrow().isArchived());
+        JsonNode archived = objectMapper.readTree(mockMvc.perform(get(url))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.archived").value(true))
+                .andExpect(jsonPath("$.version").value(2))
+                .andReturn().getResponse().getContentAsString());
+        assertTrue(java.time.LocalDateTime.parse(archived.get("updatedAt").asText())
+                .isAfter(java.time.LocalDateTime.parse(created.get("updatedAt").asText())));
+        mockMvc.perform(get("/api/requests")).andExpect(jsonPath("$.length()").value(12));
+        mockMvc.perform(delete(url)).andExpect(status().isNoContent());
+        mockMvc.perform(get(url)).andExpect(jsonPath("$.version").value(2))
+                .andExpect(jsonPath("$.updatedAt").value(archived.get("updatedAt").asText()));
+
+        JsonNode restored = objectMapper.readTree(mockMvc.perform(post(url + "/restore"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.archived").value(false))
+                .andExpect(jsonPath("$.version").value(3))
+                .andExpect(jsonPath("$.uuid").value(uuid))
+                .andExpect(jsonPath("$.requestCode").value(code))
+                .andExpect(jsonPath("$.createdAt").value(createdAt))
+                .andReturn().getResponse().getContentAsString());
+        assertTrue(java.time.LocalDateTime.parse(restored.get("updatedAt").asText())
+                .isAfter(java.time.LocalDateTime.parse(archived.get("updatedAt").asText())));
+        mockMvc.perform(post(url + "/restore")).andExpect(jsonPath("$.version").value(3))
+                .andExpect(jsonPath("$.updatedAt").value(restored.get("updatedAt").asText()));
+        mockMvc.perform(get("/api/requests")).andExpect(jsonPath("$.length()").value(13));
+
+        mockMvc.perform(delete(url + "/permanent")).andExpect(status().isNoContent());
+        assertTrue(requests.findByUuid(UUID.fromString(uuid)).isEmpty());
+        mockMvc.perform(get(url)).andExpect(status().isNotFound());
     }
 
     @Test
@@ -312,13 +353,13 @@ class ApiIntegrationIT {
                 .andExpect(status().isOk())
                 .andReturn().getResponse().getContentAsString();
         JsonNode request = objectMapper.readTree(response).get(0);
-        long requestId = request.get("id").asLong();
+        String uuid = request.get("uuid").asText();
         long clientId = request.get("clientId").asLong();
 
-        mockMvc.perform(put("/api/requests/{id}", requestId).contentType(MediaType.APPLICATION_JSON)
-                        .content(requestBody(clientId, "45000", "COMPLETED")))
+        mockMvc.perform(put("/api/requests/{uuid}", uuid).contentType(MediaType.APPLICATION_JSON)
+                        .content(updateBody(clientId, "45000", "COMPLETED", request.get("version").asLong())))
                 .andExpect(status().isConflict()).andExpect(jsonPath("$.status").value(409));
-        mockMvc.perform(get("/api/requests/{id}", requestId))
+        mockMvc.perform(get("/api/requests/{uuid}", uuid))
                 .andExpect(jsonPath("$.status").value("NEW"));
     }
 
@@ -371,6 +412,13 @@ class ApiIntegrationIT {
                  "ceremonyType":"BURIAL","price":%s,"status":%s,"comment":"Тест"}
                 """.formatted(clientId, LocalDate.now().plusDays(7), price,
                 status == null ? "null" : "\"" + status + "\"");
+    }
+
+    private String updateBody(long clientId, String price, String status, long version) throws Exception {
+        var body = (com.fasterxml.jackson.databind.node.ObjectNode) objectMapper.readTree(
+                requestBody(clientId, price, status));
+        body.put("version", version);
+        return body.toString();
     }
 
     private void createRequest(long clientId) throws Exception {

@@ -67,5 +67,6 @@ class FuneralRequestDtoTest {
         assertNull(request.getUpdatedAt());
         assertNull(request.getPriority());
         assertNull(request.getVersion());
+        assertEquals(999L, dto.getVersion());
     }
 }

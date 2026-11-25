@@ -7,6 +7,7 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.data.domain.Sort;
 import ru.funeralagency.exception.BusinessException;
 import ru.funeralagency.exception.EntityNotFoundException;
@@ -40,6 +41,8 @@ import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class FuneralRequestServiceTest {
+
+    private static final UUID REQUEST_UUID = UUID.fromString("8d44b5ce-45e2-487d-81d8-b714004db0d7");
 
     @Mock
     private FuneralRequestRepository requestRepository;
@@ -122,9 +125,9 @@ class FuneralRequestServiceTest {
     void rejectsNewToCompletedTransition() {
         FuneralRequest existing = validRequest(5L, RequestStatus.NEW);
         FuneralRequest update = validRequest(null, RequestStatus.COMPLETED);
-        when(requestRepository.findById(5L)).thenReturn(Optional.of(existing));
+        when(requestRepository.findByUuid(REQUEST_UUID)).thenReturn(Optional.of(existing));
 
-        assertThrows(BusinessException.class, () -> service.update(5L, update, 1L, null));
+        assertThrows(BusinessException.class, () -> service.updateByUuid(REQUEST_UUID, update, 1L, null, 0L));
 
         verify(requestRepository, never()).saveAndFlush(any());
     }
@@ -161,7 +164,7 @@ class FuneralRequestServiceTest {
     @Test
     void updatePreservesIdentifiersCreationTimeAndVersionButRecalculatesPriority() {
         FuneralRequest existing = validRequest(5L, RequestStatus.NEW);
-        UUID uuid = UUID.randomUUID();
+        UUID uuid = REQUEST_UUID;
         existing.setUuid(uuid);
         existing.setRequestCode("FR-2026-000005");
         LocalDateTime createdAt = LocalDateTime.of(2026, 1, 1, 12, 0);
@@ -179,11 +182,11 @@ class FuneralRequestServiceTest {
         existing.setCeremonyDate(createdAt.toLocalDate().plusDays(6));
         input.setCeremonyDate(existing.getCeremonyDate());
         input.setPriority(999);
-        when(requestRepository.findById(5L)).thenReturn(Optional.of(existing));
+        when(requestRepository.findByUuid(REQUEST_UUID)).thenReturn(Optional.of(existing));
         when(clientRepository.findById(1L)).thenReturn(Optional.of(client()));
         when(requestRepository.saveAndFlush(existing)).thenReturn(existing);
 
-        assertSame(existing, service.update(5L, input, 1L, true));
+        assertSame(existing, service.updateByUuid(REQUEST_UUID, input, 1L, true, 4L));
 
         assertEquals(5L, existing.getId());
         assertEquals(uuid, existing.getUuid());
@@ -201,17 +204,17 @@ class FuneralRequestServiceTest {
 
     @ParameterizedTest
     @CsvSource({"null, true, 2", "false, false, 0"})
-    void legacyUpdateKeepsUrgentUnlessExplicitlyChanged(String urgentValue, boolean expectedUrgent, int expectedPriority) {
+    void updateKeepsUrgentUnlessExplicitlyChanged(String urgentValue, boolean expectedUrgent, int expectedPriority) {
         FuneralRequest existing = validRequest(5L, RequestStatus.NEW);
         existing.setUrgent(true);
         FuneralRequest input = validRequest(null, RequestStatus.CONFIRMED);
         input.setCeremonyDate(LocalDate.now().plusDays(30));
-        when(requestRepository.findById(5L)).thenReturn(Optional.of(existing));
+        when(requestRepository.findByUuid(REQUEST_UUID)).thenReturn(Optional.of(existing));
         when(clientRepository.findById(1L)).thenReturn(Optional.of(client()));
         when(requestRepository.saveAndFlush(existing)).thenReturn(existing);
         Boolean urgent = "null".equals(urgentValue) ? null : Boolean.valueOf(urgentValue);
 
-        FuneralRequest updated = service.update(5L, input, 1L, urgent);
+        FuneralRequest updated = service.updateByUuid(REQUEST_UUID, input, 1L, urgent, 0L);
 
         assertEquals(expectedUrgent, updated.isUrgent());
         assertEquals(expectedPriority, updated.getPriority());
@@ -219,10 +222,109 @@ class FuneralRequestServiceTest {
 
     @Test
     void missingRequestCannotBeUpdated() {
-        when(requestRepository.findById(5L)).thenReturn(Optional.empty());
+        when(requestRepository.findByUuid(REQUEST_UUID)).thenReturn(Optional.empty());
         assertThrows(EntityNotFoundException.class,
-                () -> service.update(5L, validRequest(null, RequestStatus.CONFIRMED), 1L, null));
+                () -> service.updateByUuid(REQUEST_UUID, validRequest(null, RequestStatus.CONFIRMED), 1L, null, 0L));
         verify(requestRepository, never()).saveAndFlush(any());
+    }
+
+    @Test
+    void staleVersionIsRejectedBeforeChangingEntityOrLookingUpClient() {
+        FuneralRequest existing = validRequest(5L, RequestStatus.NEW);
+        existing.setVersion(3L);
+        when(requestRepository.findByUuid(REQUEST_UUID)).thenReturn(Optional.of(existing));
+        FuneralRequest input = validRequest(null, RequestStatus.CONFIRMED);
+        input.setPrice(new BigDecimal("999.00"));
+
+        assertThrows(OptimisticLockingFailureException.class,
+                () -> service.updateByUuid(REQUEST_UUID, input, 1L, true, 2L));
+
+        assertEquals(RequestStatus.NEW, existing.getStatus());
+        assertEquals(new BigDecimal("10000.00"), existing.getPrice());
+        assertEquals(3L, existing.getVersion());
+        verify(requestRepository, never()).saveAndFlush(any());
+        org.mockito.Mockito.verifyNoInteractions(clientRepository);
+    }
+
+    @Test
+    void versionIsRequiredForServiceUpdate() {
+        when(requestRepository.findByUuid(REQUEST_UUID))
+                .thenReturn(Optional.of(validRequest(5L, RequestStatus.NEW)));
+        FuneralRequest input = validRequest(null, RequestStatus.CONFIRMED);
+        assertThrows(ValidationException.class,
+                () -> service.updateByUuid(REQUEST_UUID, input, 1L, null, null));
+        assertThrows(ValidationException.class,
+                () -> service.updateByUuid(REQUEST_UUID, input, 1L, null, -1L));
+        verify(requestRepository, never()).saveAndFlush(any());
+    }
+
+    @Test
+    void archivePreservesRecordIdentifiersAndIsIdempotent() {
+        FuneralRequest existing = validRequest(5L, RequestStatus.NEW);
+        LocalDateTime before = LocalDateTime.of(2000, 1, 1, 12, 0);
+        existing.setUpdatedAt(before);
+        LocalDateTime createdAt = existing.getCreatedAt();
+        when(requestRepository.findByUuid(REQUEST_UUID)).thenReturn(Optional.of(existing));
+
+        service.archiveByUuid(REQUEST_UUID);
+        assertTrue(existing.isArchived());
+        assertTrue(existing.getUpdatedAt().isAfter(before));
+        LocalDateTime archivedAt = existing.getUpdatedAt();
+        assertSame(existing, service.getByUuid(REQUEST_UUID));
+        service.archiveByUuid(REQUEST_UUID);
+
+        assertEquals(archivedAt, existing.getUpdatedAt());
+        assertEquals(REQUEST_UUID, existing.getUuid());
+        assertEquals("FR-2026-000005", existing.getRequestCode());
+        assertEquals(createdAt, existing.getCreatedAt());
+        assertEquals(0L, existing.getVersion()); // Mock не исполняет Hibernate @Version.
+        verify(requestRepository).saveAndFlush(existing);
+        verify(requestRepository, never()).delete(any());
+    }
+
+    @Test
+    void restoreChangesArchiveFlagAndTimestampOnlyAndIsIdempotent() {
+        FuneralRequest existing = validRequest(5L, RequestStatus.NEW);
+        existing.setArchived(true);
+        LocalDateTime before = LocalDateTime.of(2000, 1, 1, 12, 0);
+        existing.setUpdatedAt(before);
+        LocalDateTime createdAt = existing.getCreatedAt();
+        when(requestRepository.findByUuid(REQUEST_UUID)).thenReturn(Optional.of(existing));
+        when(requestRepository.saveAndFlush(existing)).thenReturn(existing);
+
+        assertSame(existing, service.restoreByUuid(REQUEST_UUID));
+        assertFalse(existing.isArchived());
+        assertTrue(existing.getUpdatedAt().isAfter(before));
+        LocalDateTime restoredAt = existing.getUpdatedAt();
+        assertSame(existing, service.restoreByUuid(REQUEST_UUID));
+
+        assertEquals(restoredAt, existing.getUpdatedAt());
+        assertEquals(REQUEST_UUID, existing.getUuid());
+        assertEquals("FR-2026-000005", existing.getRequestCode());
+        assertEquals(createdAt, existing.getCreatedAt());
+        assertEquals(0L, existing.getVersion());
+        verify(requestRepository).saveAndFlush(existing);
+        verify(requestRepository, never()).delete(any());
+    }
+
+    @Test
+    void permanentDeleteRemovesLoadedRequest() {
+        FuneralRequest existing = validRequest(5L, RequestStatus.NEW);
+        when(requestRepository.findByUuid(REQUEST_UUID)).thenReturn(Optional.of(existing));
+
+        service.deletePermanentlyByUuid(REQUEST_UUID);
+
+        verify(requestRepository).delete(existing);
+        verify(requestRepository).flush();
+        verify(requestRepository, never()).saveAndFlush(any());
+    }
+
+    @Test
+    void defaultListQueriesOnlyActiveRequests() {
+        FuneralRequest active = validRequest(5L, RequestStatus.NEW);
+        when(requestRepository.findByArchivedFalseOrderByIdAsc()).thenReturn(List.of(active));
+        assertEquals(List.of(active), service.findAll());
+        verify(requestRepository, never()).findAllByOrderByIdAsc();
     }
 
     @Test
@@ -238,7 +340,7 @@ class FuneralRequestServiceTest {
     }
 
     private FuneralRequest validRequest(Long id, RequestStatus status) {
-        return new FuneralRequest(
+        FuneralRequest request = new FuneralRequest(
                 id,
                 new Client(1L, "Клиент", "+79991234567", null),
                 "Иванов Иван Иванович",
@@ -249,5 +351,10 @@ class FuneralRequestServiceTest {
                 LocalDateTime.now(),
                 "Комментарий"
         );
+        request.setUuid(REQUEST_UUID);
+        request.setRequestCode("FR-2026-000005");
+        request.setVersion(0L);
+        request.setUpdatedAt(request.getCreatedAt());
+        return request;
     }
 }

@@ -9,9 +9,15 @@ import ru.funeralagency.model.RequestStatus;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
 
 public interface FuneralRequestRepository extends JpaRepository<FuneralRequest, Long> {
     List<FuneralRequest> findAllByOrderByIdAsc();
+
+    List<FuneralRequest> findByArchivedFalseOrderByIdAsc();
+
+    Optional<FuneralRequest> findByUuid(UUID uuid);
 
     boolean existsByClientId(long clientId);
 
