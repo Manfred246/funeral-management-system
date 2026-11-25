@@ -51,6 +51,7 @@ class FlywayBaselineIT {
                 before = snapshot(statement);
             }
             SpringApplication application = new SpringApplication(Main.class);
+            application.setAdditionalProfiles("test");
             application.setWebApplicationType(WebApplicationType.NONE);
             application.addInitializers(app -> app.getEnvironment().getPropertySources().addFirst(
                     new MapPropertySource("test-database", Map.of(
@@ -63,11 +64,13 @@ class FlywayBaselineIT {
                 assertEquals("validate", context.getEnvironment().getProperty("spring.jpa.hibernate.ddl-auto"));
                 Flyway flyway = context.getBean(Flyway.class);
                 var applied = flyway.info().applied();
-                assertEquals(2, applied.length);
+                assertEquals(3, applied.length);
                 assertEquals("1", applied[0].getVersion().getVersion());
                 assertEquals("BASELINE", applied[0].getType().name());
                 assertEquals("2", applied[1].getVersion().getVersion());
                 assertEquals("SQL", applied[1].getType().name());
+                assertEquals("3", applied[2].getVersion().getVersion());
+                assertEquals("SQL", applied[2].getType().name());
                 assertEquals(0, flyway.migrate().migrationsExecuted);
                 assertEquals(6, context.getBean(ClientRepository.class).count());
                 assertEquals(12, context.getBean(FuneralRequestRepository.class).count());

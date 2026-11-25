@@ -31,7 +31,8 @@ createdb -h localhost -p 5432 -U postgres -W funeral_management
 При первом запуске backend Flyway выполняет
 `backend/src/main/resources/db/migration/V1__baseline_kr1.sql`: создаёт таблицы,
 ограничения, индекс и обязательные справочники. Клиенты и заявки не добавляются.
-Затем `V2__extend_funeral_requests.sql` добавляет новые поля заявок.
+Затем `V2__extend_funeral_requests.sql` добавляет новые поля заявок,
+а `V3__create_security_tables.sql` создаёт users, user_roles и refresh_sessions.
 Hibernate работает с `spring.jpa.hibernate.ddl-auto=validate` и только проверяет mapping.
 
 Для демонстрационных данных после первого успешного запуска backend можно выполнить:
@@ -57,6 +58,7 @@ psql -h localhost -p 5432 -U postgres -W -d funeral_management -v ON_ERROR_STOP=
 На пустой схеме baseline не создаётся: V1 выполняется как обычная SQL-миграция.
 После baseline применяется V2: существующие строки получают UUID, код заявки,
 priority, updatedAt и начальную version без изменения прежних полей.
+Затем V3 добавляет таблицы аутентификации без изменения бизнес-данных.
 
 При последующих запусках Flyway читает `flyway_schema_history` и применяет только
 новые миграции. Baseline не проверяет все CHECK/FK и данные старой схемы;
@@ -80,7 +82,9 @@ Backend использует следующие переменные окруж�
 
 - `DB_URL` — JDBC URL, по умолчанию `jdbc:postgresql://localhost:5432/funeral_management`;
 - `DB_USERNAME` — пользователь, по умолчанию `postgres`;
-- `DB_PASSWORD` — пароль PostgreSQL.
+- `DB_PASSWORD` — пароль PostgreSQL;
+- `JWT_SECRET` — обязательный случайный секрет подписи JWT, минимум 32 байта UTF-8;
+- `APP_ADMIN_LOGIN`, `APP_ADMIN_PASSWORD`, `APP_ADMIN_NAME` — только для создания первого ADMIN.
 
 Пример запуска в PowerShell без сохранения пароля в проекте:
 
@@ -93,7 +97,111 @@ mvn -pl backend spring-boot:run
 
 Flyway управляет созданием и изменением схемы; Hibernate не создаёт и не очищает таблицы.
 
+## Аутентификация и права
+
+Backend использует stateless Spring Security и Bearer JWT. Cookie-сессии, Basic
+и form login не используются. CSRF отключён, поскольку авторизация передаётся
+явно заголовком, а не автоматически браузерной cookie.
+
+### Секрет и первый ADMIN
+
+Без корректного JWT_SECRET backend не запускается. Секрет не хранится в Git.
+Например, в PowerShell можно сгенерировать его и получить bootstrap-пароль без
+вывода значений в терминал:
+
+```powershell
+$jwtBytes = [byte[]]::new(32)
+[System.Security.Cryptography.RandomNumberGenerator]::Fill($jwtBytes)
+$env:JWT_SECRET = [Convert]::ToBase64String($jwtBytes)
+$adminCredential = Get-Credential -Message 'Данные первого ADMIN'
+$env:APP_ADMIN_LOGIN = $adminCredential.UserName
+$env:APP_ADMIN_PASSWORD = $adminCredential.GetNetworkCredential().Password
+$env:APP_ADMIN_NAME = Read-Host 'Имя первого ADMIN'
+```
+
+Для последующих запусков используйте тот же JWT_SECRET через environment или
+локальную .env для Compose; новый секрет делает ранее выданные access JWT
+недействительными. Compose передаёт JWT_SECRET и APP_ADMIN_* в backend.
+
+Если users пуста и все три APP_ADMIN_* заданы, ApplicationRunner создаёт первого
+ADMIN с BCrypt-хэшем, enabled=true и passwordChangeRequired=true. Если users уже
+не пуста, bootstrap её не изменяет. Без APP_ADMIN_* пользователь по умолчанию не
+создаётся; частично заданная конфигурация при пустой users приводит к понятной
+ошибке запуска. После создания администратора bootstrap-пароль можно убрать из
+окружения. Стандартный пользователь Spring Boot отключён.
+
+Пароль при создании и смене: минимум 8 символов, максимум 72 байта UTF-8
+(ограничение BCrypt). Пароли и passwordHash не возвращаются в API и не логируются.
+Логины чувствительны к регистру; пробелы по краям логина убираются.
+
+### Auth endpoints
+
+| Endpoint | Body | Результат |
+|---|---|---|
+| POST `/api/auth/login` | `login`, `password` | Tokens и безопасный user DTO |
+| POST `/api/auth/refresh` | `refreshToken` | Новый access token, прежний refresh token |
+| POST `/api/auth/logout` | `refreshToken` | 204, серверная refresh session отозвана |
+| GET `/api/auth/me` | — | UUID, login, name, roles, enabled, passwordChangeRequired |
+| POST `/api/auth/change-password` | `currentPassword`, `newPassword` | 204, пароль изменён |
+
+Login/refresh/logout не требуют access JWT. Logout подтверждается самим refresh
+token; повторный logout, включая неизвестный token, возвращает 204.
+Me и change-password требуют `Authorization: Bearer <accessToken>`.
+
+Успешный login/refresh возвращает поля:
+
+```text
+accessToken
+refreshToken
+tokenType = Bearer
+expiresIn = 900 (секунды)
+user { uuid, login, name, roles, enabled, passwordChangeRequired }
+```
+
+Access token — HS256 JWT на 15 минут; claims: sub (UUID), login, roles, iat, exp.
+Подпись, срок действия, обязательные claims и алгоритм проверяются. При каждом
+защищённом запросе enabled, roles и требование смены пароля берутся из БД.
+Отключённый пользователь получает 401 даже с ранее действительным JWT.
+
+Refresh token — случайные 32 байта в Base64URL, срок 7 дней, без rotation.
+В refresh_sessions хранится только SHA-256-хэш токена, связь с User, expiresAt,
+revoked и createdAt. Refresh проверяет существование, expiry, revoked и enabled.
+Auth timestamps хранятся в UTC. Смена пароля отзывает все refresh sessions,
+сбрасывает failedLoginAttempts и passwordChangeRequired. После неё следует войти
+заново. Logout и смена пароля не blacklist-ят access JWT: он истекает через 15 минут.
+
+Пять последовательных неправильных паролей блокируют последующие login, включая
+правильный пароль. Успешный вход до достижения порога обнуляет счётчик. Счётчик
+сохраняется, несмотря на ответ 401, и защищён блокировкой строки при login.
+Автоматического таймера разблокировки нет. Административный reset/unlock будет
+отдельным этапом; пользователь с ещё действующим access token может подтвердить
+текущий пароль и сменить его, что также сбросит счётчик.
+
+Пока passwordChangeRequired=true, разрешены login, refresh, logout, me и смена
+пароля. Бизнес-API отвечает 403 до успешной смены временного пароля.
+
+### Матрица прав
+
+| Действие | VIEWER | MANAGER | ADMIN |
+|---|---|---|---|
+| GET заявок, legacy-поиск, XLSX export | Да | Да | Да |
+| GET статистики и клиентов | Да | Да | Да |
+| Создание/изменение/архивирование/восстановление заявок | Нет | Да | Да |
+| Физическое удаление заявки | Нет | Нет | Да |
+| Создание/изменение/удаление Client с прежними бизнес-правилами | Нет | Да | Да |
+| Me и смена собственного пароля | Да | Да | Да |
+
+Без действительного access token защищённые endpoints возвращают 401; при
+недостаточной роли — 403. Ошибки используют прежнюю JSON-структуру ApiErrorResponse,
+без JWT internals, SQL, passwordHash и stack trace. Неверные credentials, отключённый
+или заблокированный login дают одинаковый ответ 401. Некорректная структура body
+возвращает 400. Неизвестные endpoints запрещены по умолчанию.
+
 ## Запуск консольного клиента
+
+JavaFX и console-client пока не умеют получать/обновлять JWT. После подключения
+Security их запросы без Bearer token возвращают 401; адаптация клиентов будет
+отдельной задачей. Ниже сохранены команды сборки и запуска.
 
 Сначала запустите backend. Затем в другом терминале выполните:
 

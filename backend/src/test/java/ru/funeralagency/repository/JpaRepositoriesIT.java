@@ -22,6 +22,10 @@ import org.springframework.data.domain.Sort;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import ru.funeralagency.Main;
 import ru.funeralagency.service.FuneralRequestService;
+import ru.funeralagency.service.AuthService;
+import ru.funeralagency.model.Role;
+import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import ru.funeralagency.dto.FuneralRequestFilterDto;
 import ru.funeralagency.model.CeremonyType;
 import ru.funeralagency.model.Client;
@@ -76,6 +80,7 @@ class JpaRepositoriesIT {
             assertEquals(schema, result.getString(1));
         }
         SpringApplication application = new SpringApplication(Main.class);
+        application.setAdditionalProfiles("test");
         application.setWebApplicationType(WebApplicationType.NONE);
         application.addInitializers(app -> app.getEnvironment().getPropertySources().addFirst(
                 new MapPropertySource("test-database", Map.of(
@@ -97,7 +102,7 @@ class JpaRepositoriesIT {
     @BeforeEach
     void resetDemoData() throws Exception {
         try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
-            statement.execute("TRUNCATE funeral_requests, clients RESTART IDENTITY");
+            statement.execute("TRUNCATE funeral_requests, clients, refresh_sessions, user_roles, users RESTART IDENTITY");
             statement.execute("DELETE FROM ceremony_types WHERE id = 99");
             statement.execute(Files.readString(Path.of(System.getProperty("project.root"), "database", "seed.sql")));
         }
@@ -116,13 +121,53 @@ class JpaRepositoriesIT {
     }
 
     @Test
-    void flywayCreatesV1AndV2AndDoesNotRepeatThem() {
+    void flywayCreatesV1V2V3AndDoesNotRepeatThem() {
         Flyway flyway = context.getBean(Flyway.class);
-        assertEquals("2", flyway.info().current().getVersion().getVersion());
+        assertEquals("3", flyway.info().current().getVersion().getVersion());
         assertEquals("SQL", flyway.info().current().getType().name());
         assertEquals(0, flyway.migrate().migrationsExecuted);
         assertEquals(6, clients.count());
         assertEquals(12, requests.count());
+    }
+
+    @Test
+    void failedLoginCounterCommitsEvenWhenAuthServiceThrows() {
+        AuthService auth = context.getBean(AuthService.class);
+        UserRepository users = context.getBean(UserRepository.class);
+        auth.createInitialAdmin("auth-test", "temporary-password", "Тест");
+        var user = users.findAll().get(0);
+        assertEquals(java.util.Set.of(Role.ADMIN), users.findByUuid(user.getUuid()).orElseThrow().getRoles());
+        for (int attempt = 1; attempt <= 5; attempt++) {
+            assertThrows(BadCredentialsException.class, () -> auth.login("auth-test", "wrong-password"));
+            assertEquals(attempt, users.findByUuid(user.getUuid()).orElseThrow().getFailedLoginAttempts());
+        }
+        assertThrows(BadCredentialsException.class, () -> auth.login("auth-test", "temporary-password"));
+        assertEquals(0, context.getBean(RefreshSessionRepository.class).count());
+    }
+
+    @Test
+    void refreshLogoutAndPasswordChangePersistInPostgres() {
+        AuthService auth = context.getBean(AuthService.class);
+        UserRepository users = context.getBean(UserRepository.class);
+        RefreshSessionRepository sessions = context.getBean(RefreshSessionRepository.class);
+        auth.createInitialAdmin("auth-test", "temporary-password", "Тест");
+        var tokens = auth.login("auth-test", "temporary-password");
+        var stored = sessions.findAll().get(0);
+        assertNotEquals(tokens.refreshToken(), stored.getTokenHash());
+        assertEquals(64, stored.getTokenHash().length());
+        assertEquals(tokens.refreshToken(), auth.refresh(tokens.refreshToken()).refreshToken());
+        auth.logout(tokens.refreshToken());
+        assertTrue(sessions.findById(stored.getId()).orElseThrow().isRevoked());
+        assertThrows(BadCredentialsException.class, () -> auth.refresh(tokens.refreshToken()));
+
+        var secondLogin = auth.login("auth-test", "temporary-password");
+        auth.changePassword(tokens.user().uuid(), "temporary-password", "changed-password");
+        var changed = users.findByUuid(tokens.user().uuid()).orElseThrow();
+        assertFalse(changed.isPasswordChangeRequired());
+        assertTrue(context.getBean(PasswordEncoder.class).matches("changed-password", changed.getPasswordHash()));
+        assertThrows(BadCredentialsException.class, () -> auth.refresh(secondLogin.refreshToken()));
+        assertThrows(BadCredentialsException.class, () -> auth.login("auth-test", "temporary-password"));
+        assertNotNull(auth.login("auth-test", "changed-password").accessToken());
     }
 
     @Test

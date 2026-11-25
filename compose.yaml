@@ -36,6 +36,10 @@ services:
       DB_URL: jdbc:postgresql://postgres:5432/funeral_management
       DB_USERNAME: postgres
       DB_PASSWORD: postgres
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET before starting backend}
+      APP_ADMIN_LOGIN: ${APP_ADMIN_LOGIN:-}
+      APP_ADMIN_PASSWORD: ${APP_ADMIN_PASSWORD:-}
+      APP_ADMIN_NAME: ${APP_ADMIN_NAME:-}
 
     ports:
       - "8080:8080"

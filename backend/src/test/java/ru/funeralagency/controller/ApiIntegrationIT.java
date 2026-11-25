@@ -16,6 +16,11 @@ import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import ru.funeralagency.Main;
+import ru.funeralagency.model.User;
+import ru.funeralagency.model.Role;
+import ru.funeralagency.repository.UserRepository;
+import ru.funeralagency.security.JwtService;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import ru.funeralagency.repository.FuneralRequestRepository;
 
 import java.io.ByteArrayInputStream;
@@ -29,6 +34,7 @@ import java.util.Map;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -70,6 +76,7 @@ class ApiIntegrationIT {
             org.junit.jupiter.api.Assertions.assertEquals(schema, result.getString(1));
         }
         SpringApplication application = new SpringApplication(Main.class);
+        application.setAdditionalProfiles("test");
         Map<String, Object> settings = Map.of(
                 "spring.datasource.url", testUrl,
                 "spring.datasource.username", username,
@@ -82,7 +89,7 @@ class ApiIntegrationIT {
         application.addInitializers(app -> app.getEnvironment().getPropertySources()
                 .addFirst(new MapPropertySource("test-database", settings)));
         context = (ServletWebServerApplicationContext) application.run();
-        mockMvc = MockMvcBuilders.webAppContextSetup(context).build();
+        mockMvc = MockMvcBuilders.webAppContextSetup(context).apply(springSecurity()).build();
         objectMapper = context.getBean(ObjectMapper.class);
     }
 
@@ -91,10 +98,19 @@ class ApiIntegrationIT {
         // Схему создаёт Flyway при запуске контекста, до Hibernate validate.
         try (Connection connection = dataSource.getConnection();
              Statement statement = connection.createStatement()) {
-            statement.execute("TRUNCATE funeral_requests, clients RESTART IDENTITY");
+            statement.execute("TRUNCATE funeral_requests, clients, refresh_sessions, user_roles, users RESTART IDENTITY");
             Path seed = Path.of(System.getProperty("project.root"), "database", "seed.sql");
             statement.execute(Files.readString(seed));
         }
+        User admin = new User();
+        admin.setLogin("integration-admin");
+        admin.setName("Integration Admin");
+        admin.setRoles(java.util.Set.of(Role.ADMIN));
+        admin.setPasswordHash(context.getBean(PasswordEncoder.class).encode("integration-password"));
+        context.getBean(UserRepository.class).saveAndFlush(admin);
+        String token = context.getBean(JwtService.class).createAccessToken(admin);
+        mockMvc = MockMvcBuilders.webAppContextSetup(context).apply(springSecurity())
+                .defaultRequest(get("/").header("Authorization", "Bearer " + token)).build();
     }
 
     @AfterAll
