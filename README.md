@@ -2,11 +2,12 @@
 
 Учебная система для оформления и обработки заявок ритуального агентства.
 
-Проект состоит из трёх Maven-модулей:
+Проект состоит из трёх Maven-модулей и отдельного web-клиента:
 
 - `backend` — REST API на Spring Boot;
 - `console-client` — отдельный консольный клиент;
 - `javafx-client` — настольный JavaFX-клиент КР №2 (не адаптируется на этом этапе).
+- `frontend` — React/Vite web-клиент КР №3; устанавливается и собирается через npm.
 
 Данные хранятся в PostgreSQL. Консольный клиент работает только через REST API:
 
@@ -918,3 +919,136 @@ Springdoc/Security/Actuator beans, но mock repositories. Отдельный of
 инициализирует все JPA entities и Spring Data query methods. Это не заменяет
 PostgreSQL IT: Flyway SQL, triggers, FK, DB locking, реальные aggregate queries и
 Docker startup/health требуют запуска на PostgreSQL/Docker.
+
+## Web frontend КР №3
+
+Frontend использует React, Vite, React Router, обычный JavaScript и CSS.
+Требуется Node.js 24+ (рекомендуется актуальный LTS) и npm. Backend запускается
+отдельно по инструкции выше: PostgreSQL → Flyway/backend → frontend.
+Перед демонстрацией создайте bootstrap ADMIN, смените его временный пароль и,
+если нужны примеры клиентов/заявок, загрузите `database/seed.sql` по инструкции выше.
+JavaFX и console-client на этом этапе не адаптировались.
+
+```powershell
+cd frontend
+npm ci
+Copy-Item .env.example .env
+npm run dev
+```
+
+Откройте `http://127.0.0.1:5173`. При изменении `.env` перезапустите Vite.
+Первоначальная установка уже имеет `package-lock.json`, поэтому для повторной
+установки используется `npm ci`.
+
+| Переменная frontend/.env | Назначение |
+|---|---|
+| VITE_API_BASE_URL | Пустая по умолчанию: запросы идут на `/api` того же origin. Можно указать URL API, доступный браузеру с учётом CORS |
+| BACKEND_PROXY_TARGET | Только для Vite dev/preview: адрес backend, default http://localhost:8080 |
+
+В режиме dev Vite проксирует `/api` в backend; браузер обращается к своему origin,
+поэтому CORS backend не менялся. Например, при Docker `BACKEND_PORT=8090`
+установите `BACKEND_PROXY_TARGET=http://localhost:8090`.
+В `VITE_*` нельзя помещать JWT_SECRET, пароль БД или bootstrap-пароли: эти значения
+включаются в публичный browser bundle. `VITE_API_BASE_URL` применяется при build.
+
+```powershell
+# В каталоге frontend
+npm run lint
+npm test
+npm run build
+npm run preview
+```
+
+`dist/` содержит production SPA. `preview` доступен на `http://127.0.0.1:4173`
+и использует такой же proxy; это локальная проверка сборки, не production server.
+Для отдельного production web server требуется отдавать `dist`, направлять
+неизвестные frontend routes на `index.html` и проксировать `/api` в backend.
+При прямом cross-origin размещении одного VITE_API_BASE_URL недостаточно:
+потребуется отдельно согласованная узкая CORS-настройка backend.
+Compose по-прежнему запускает PostgreSQL/backend; frontend-контейнер не добавлялся.
+
+### Страницы и права
+
+| Страница | Путь | Доступ |
+|---|---|---|
+| Вход | /login | Без сессии |
+| Список заявок | /requests | VIEWER / MANAGER / ADMIN |
+| Просмотр заявки, tags и notes | /requests/:uuid | Все роли |
+| Создание / редактирование | /requests/new, /requests/:uuid/edit | MANAGER / ADMIN |
+| Аналитика | /analytics | Все роли |
+| Типы церемоний | /ceremony-types | Просмотр — все роли, изменения — ADMIN |
+| Пользователи | /admin/users | ADMIN |
+| Аудит | /admin/audit | ADMIN |
+| Смена пароля | /change-password | Авторизованный пользователь |
+
+Список использует серверные `q`, `client`, `ceremonyTypeId`, `status`, `urgent`,
+`priority`, `archived`, `minPrice`, `maxPrice`, `tag`, `page`, `size`, `sort`.
+Параметры сохраняются в URL. CSV export использует те же фильтры и sort без page/size.
+Варианты archived — активные или архивные заявки, согласно существующему API.
+Клиенты, типы церемоний и теги выбираются по названиям; технические ID вручную не вводятся.
+Request endpoints вызываются по UUID. Version передаётся в PUT и не изменяется UI.
+При 409 редактирования есть сообщение о конфликте и загрузка актуальной записи.
+Повторная загрузка заменяет несохранённую форму.
+
+MANAGER/ADMIN доступны archive/restore, tags/notes, выбор текущей страницы и пять
+bulk-операций. Permanent delete доступен ADMIN и требует подтверждения.
+Notes архивной заявки доступны для чтения; её tags нельзя менять.
+Автор заметки не передаётся frontend — backend берёт его из authenticated user.
+Статусы, priority, переходы и ограничения проверяет backend; UI не дублирует бизнес-правила.
+
+CSV import поддерживает CREATE_ONLY и UPSERT_BY_REQUEST_CODE. После выбора файла
+нужно отдельно выполнить preview, проверить validCount/errorCount и ошибки строк,
+затем нажать apply. При смене файла/режима preview сбрасывается; после apply
+требуется новый preview. Partial success в bulk/import показан явно.
+Если ответ apply потерян из-за сети, часть строк могла сохраниться: проверьте
+список перед повторением CREATE_ONLY. Повторять импорт вслепую не следует.
+
+### Сессия и ошибки frontend
+
+Один API helper находится в `frontend/src/api/client.js`.
+Access token хранится в памяти; refresh token — в sessionStorage текущей вкладки,
+чтобы восстановить сессию после reload. Пароли в browser storage не сохраняются.
+Это простой Bearer-клиент: sessionStorage доступен JavaScript, поэтому нельзя
+добавлять непроверенные скрипты или выводить пользовательский HTML.
+React отображает комментарии и notes обычным текстом.
+
+При 401 выполняется один refresh и один повтор исходного запроса. Параллельные
+401 используют общий refresh. Неудачный refresh очищает сессию; повторного цикла нет.
+Logout очищает локальную сессию и отзывает серверную refresh-session. Если сервер
+недоступен, UI явно сообщает, что отзыв не подтверждён.
+После смены пароля нужен новый login: backend отзывает прежние refresh sessions.
+`passwordChangeRequired` перенаправляет на смену пароля; role guards дополняют,
+но не заменяют Spring Security.
+
+Ошибки 400/401/403/404/409/500 показывают backend message и correlationId, если он
+присутствует. Токены/пароли не выводятся в console или уведомления.
+Временный пароль при create/reset вводит ADMIN; поле очищается после запроса.
+
+### Проверка web-клиента перед защитой
+
+`npm test` проверяет API helper с подменённым fetch: refresh concurrency,
+ограничение retry, logout race, сохранение multipart при повторе,
+passwordChangeRequired, ошибки и query encoding. Это не end-to-end тесты PostgreSQL.
+Frontend build/lint и Maven test/package проверяются отдельно.
+В текущей среде в браузере проверены login и редирект защищённой страницы на login.
+Полный проход с БД не подтверждён: Docker CLI и TEST_DB_* отсутствовали.
+
+На запущенной PostgreSQL/backend выполните этот ручной проход:
+
+1. Bootstrap ADMIN: login → обязательная смена пароля → повторный login → me/logout;
+   reload вкладки восстанавливает сессию, просроченный access выполняет refresh.
+2. VIEWER: просмотр страниц и export; create/edit/import/bulk/admin недоступны.
+3. MANAGER: создать заявку, проверить detail/редактирование; сохранить одну заявку
+   из двух вкладок и получить понятный 409 во второй; refetch загружает новую version.
+4. Проверить все фильтры, сортировку и страницы; CSV export соответствует фильтрам.
+5. Archive/restore; tags create/add/remove/filter; notes create/edit/pin/delete;
+   archived notes доступны только для чтения.
+6. Bulk: полный success и partial success; CSV: invalid preview, mixed apply,
+   CREATE_ONLY и повторный UPSERT с тем же requestCode.
+7. Analytics; ADMIN: CeremonyType create/rename/enable/disable, user
+   create/edit/roles/enable/disable/unlock/reset, защита последнего ADMIN;
+   после reset требуется смена пароля.
+8. Audit search/sort/page, correlationId; permanent delete с подтверждением;
+   400/401/403/404/409/500 и network errors отображаются без stack trace.
+
+До этого ручного прохода готовность полного сценария к защите не подтверждена.
