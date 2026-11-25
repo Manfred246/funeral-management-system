@@ -1,6 +1,7 @@
 package ru.funeralagency.service;
 
 import org.hibernate.exception.ConstraintViolationException;
+import org.postgresql.util.PSQLException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -90,8 +91,14 @@ public class ClientService {
     private boolean hasConstraint(Throwable exception, String name) {
         Throwable cause = exception;
         while (cause != null) {
-            if (cause instanceof ConstraintViolationException violation) {
-                return name.equals(violation.getConstraintName());
+            if (cause instanceof ConstraintViolationException violation
+                    && name.equals(violation.getConstraintName())) {
+                return true;
+            }
+            // Hibernate может не извлечь имя из локализованного сообщения PostgreSQL.
+            if (cause instanceof PSQLException postgres && postgres.getServerErrorMessage() != null
+                    && name.equals(postgres.getServerErrorMessage().getConstraint())) {
+                return true;
             }
             cause = cause.getCause();
         }

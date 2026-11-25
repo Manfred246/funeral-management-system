@@ -474,7 +474,9 @@ class ApiIntegrationIT {
                 .andExpect(jsonPath("$[0].clientId").value(2))
                 .andExpect(jsonPath("$[1].clientId").value(2));
         mockMvc.perform(get("/api/requests/search").param("deceasedName", "иВаНо"))
-                .andExpect(status().isOk()).andExpect(jsonPath("$.length()").value(2));
+                .andExpect(status().isOk()).andExpect(jsonPath("$.length()").value(3))
+                .andExpect(jsonPath("$[*].deceasedFullName", org.hamcrest.Matchers.containsInAnyOrder(
+                        "Иванов Пётр Николаевич", "Иванова Ольга Ивановна", "Орлов Виктор Иванович")));
         mockMvc.perform(get("/api/requests/search").param("clientId", "999999"))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.length()").value(0));
         mockMvc.perform(get("/api/requests/search"))
