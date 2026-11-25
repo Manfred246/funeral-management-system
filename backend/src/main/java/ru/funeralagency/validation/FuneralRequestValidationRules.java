@@ -9,7 +9,6 @@ import ru.funeralagency.model.RequestStatus;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 
-/** Проверка и нормализация заявки независимо от REST-слоя. */
 public final class FuneralRequestValidationRules {
 
     public static final int MAX_DECEASED_FULL_NAME_LENGTH = 255;
@@ -31,7 +30,6 @@ public final class FuneralRequestValidationRules {
         rejectPastDate(request.getCeremonyDate());
     }
 
-    /** Позволяет менять статус после церемонии, но запрещает назначать новую дату в прошлом. */
     public static void validateForUpdate(FuneralRequest request, LocalDate previousDate) {
         validateCommon(request);
         if (!request.getCeremonyDate().equals(previousDate)) {

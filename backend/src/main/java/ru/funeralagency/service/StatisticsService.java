@@ -11,7 +11,6 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.List;
 
-/** Рассчитывает статистику по данным, полученным через репозитории. */
 @Service
 public class StatisticsService {
     private final ClientRepository clientRepository;

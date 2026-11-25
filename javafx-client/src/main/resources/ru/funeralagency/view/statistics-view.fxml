@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.scene.control.Button?>
+<?import javafx.scene.control.Label?>
+<?import javafx.scene.layout.ColumnConstraints?>
+<?import javafx.scene.layout.GridPane?>
+<?import javafx.scene.layout.HBox?>
+<?import javafx.scene.layout.VBox?>
+
+<VBox xmlns:fx="http://javafx.com/fxml"
+      fx:controller="ru.funeralagency.controller.StatisticsController"
+      prefWidth="560" spacing="20" styleClass="app-root, statistics-window">
+
+    <Label text="Статистика" styleClass="page-title"/>
+
+    <GridPane hgap="24" vgap="18" styleClass="surface, statistics-grid" VBox.vgrow="ALWAYS">
+        <columnConstraints>
+            <ColumnConstraints hgrow="ALWAYS"/>
+            <ColumnConstraints halignment="RIGHT"/>
+        </columnConstraints>
+
+        <Label text="Всего клиентов" GridPane.rowIndex="0"/>
+        <Label fx:id="totalClientsLabel" text="—" styleClass="stat-value" GridPane.columnIndex="1" GridPane.rowIndex="0"/>
+
+        <Label text="Всего заявок" GridPane.rowIndex="1"/>
+        <Label fx:id="totalRequestsLabel" text="—" styleClass="stat-value" GridPane.columnIndex="1" GridPane.rowIndex="1"/>
+
+        <Label text="Новые заявки" GridPane.rowIndex="2"/>
+        <Label fx:id="newRequestsLabel" text="—" styleClass="stat-value" GridPane.columnIndex="1" GridPane.rowIndex="2"/>
+
+        <Label text="Завершённые заявки" GridPane.rowIndex="3"/>
+        <Label fx:id="completedRequestsLabel" text="—" styleClass="stat-value" GridPane.columnIndex="1" GridPane.rowIndex="3"/>
+
+        <Label text="Отменённые заявки" GridPane.rowIndex="4"/>
+        <Label fx:id="cancelledRequestsLabel" text="—" styleClass="stat-value" GridPane.columnIndex="1" GridPane.rowIndex="4"/>
+
+        <Label text="Средняя стоимость заявки" GridPane.rowIndex="5"/>
+        <Label fx:id="averagePriceLabel" text="—" styleClass="stat-value, money-value" GridPane.columnIndex="1" GridPane.rowIndex="5"/>
+    </GridPane>
+
+    <HBox spacing="10" alignment="CENTER_RIGHT" styleClass="dialog-actions">
+        <Button text="Обновить" onAction="#handleRefresh" styleClass="button-primary"/>
+        <Button text="Закрыть" onAction="#handleClose" cancelButton="true"/>
+    </HBox>
+</VBox>

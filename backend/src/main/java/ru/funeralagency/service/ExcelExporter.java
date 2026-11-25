@@ -16,7 +16,6 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.util.List;
 
-/** Формирует XLSX-файл со списком заявок. */
 @Component
 public class ExcelExporter {
 

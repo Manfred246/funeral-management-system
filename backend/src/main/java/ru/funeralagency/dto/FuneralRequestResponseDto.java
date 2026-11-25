@@ -7,7 +7,6 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 
-/** Представление заявки в REST API. */
 public class FuneralRequestResponseDto {
 
     private Long id;

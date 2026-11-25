@@ -13,7 +13,6 @@ import ru.funeralagency.validation.FuneralRequestValidationRules;
 import java.time.LocalDate;
 import java.util.List;
 
-/** Бизнес-логика работы с заявками. */
 @Service
 public class FuneralRequestService {
 

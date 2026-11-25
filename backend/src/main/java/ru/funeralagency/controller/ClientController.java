@@ -18,11 +18,9 @@ import ru.funeralagency.service.ClientService;
 import java.net.URI;
 import java.util.List;
 
-/** REST API для управления клиентами агентства. */
 @RestController
 @RequestMapping("/api/clients")
 public class ClientController {
-
     private final ClientService clientService;
     private final ClientMapper clientMapper;
 

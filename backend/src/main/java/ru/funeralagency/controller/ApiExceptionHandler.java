@@ -20,7 +20,6 @@ import ru.funeralagency.exception.ValidationException;
 import java.io.UncheckedIOException;
 import java.time.Instant;
 
-/** Преобразует доменные исключения в стабильные и понятные ответы REST API. */
 @RestControllerAdvice
 public class ApiExceptionHandler {
     private static final Logger logger = LoggerFactory.getLogger(ApiExceptionHandler.class);

@@ -1,0 +1,231 @@
+.root {
+    -fx-font-family: "Segoe UI";
+    -fx-font-size: 13px;
+    -fx-base: #f5f8fa;
+    -fx-background: #f5f8fa;
+    -fx-control-inner-background: #ffffff;
+    -fx-accent: #177c72;
+    -fx-focus-color: #177c72;
+    -fx-faint-focus-color: transparent;
+    -fx-text-base-color: #263849;
+}
+
+.app-root { -fx-background-color: #f5f8fa; }
+.label { -fx-text-fill: #263849; }
+.page-title {
+    -fx-font-size: 24px;
+    -fx-font-weight: bold;
+    -fx-text-fill: #183b3a;
+}
+.muted-label, .table-view .placeholder .label { -fx-text-fill: #71818e; }
+.page-header { -fx-padding: 24 24 18 24; }
+.surface {
+    -fx-background-color: #ffffff;
+    -fx-background-radius: 8;
+    -fx-border-color: #dce5eb;
+    -fx-border-radius: 8;
+    -fx-padding: 16;
+}
+.field-label {
+    -fx-font-size: 12px;
+    -fx-text-fill: #60727f;
+}
+
+.button {
+    -fx-background-color: #ffffff;
+    -fx-background-radius: 6;
+    -fx-border-color: #ced9e0;
+    -fx-border-radius: 6;
+    -fx-padding: 8 14;
+    -fx-min-height: 36;
+    -fx-font-weight: bold;
+    -fx-text-fill: #344b5b;
+    -fx-cursor: hand;
+}
+.button:hover {
+    -fx-background-color: #edf3f6;
+    -fx-border-color: #acbdc9;
+}
+.button:pressed { -fx-background-color: #e0eaf0; }
+.button:focused { -fx-border-color: #177c72; }
+.button-primary {
+    -fx-background-color: #177c72;
+    -fx-border-color: #177c72;
+    -fx-text-fill: #ffffff;
+}
+.button-primary:hover {
+    -fx-background-color: #12675f;
+    -fx-border-color: #12675f;
+}
+.button-primary:pressed {
+    -fx-background-color: #0e544d;
+    -fx-border-color: #0e544d;
+}
+.button-primary:focused { -fx-border-color: #0a4e47; }
+.button-danger {
+    -fx-background-color: #fff3f1;
+    -fx-border-color: #ebc2bc;
+    -fx-text-fill: #a7352d;
+}
+.button-danger:hover {
+    -fx-background-color: #fbe4e0;
+    -fx-border-color: #d99b93;
+}
+.button-danger:pressed { -fx-background-color: #f5d2cc; }
+.button:disabled { -fx-opacity: 0.5; }
+
+.text-field, .combo-box-base, .text-area {
+    -fx-background-color: #ffffff;
+    -fx-background-radius: 6;
+    -fx-border-color: #ced9e0;
+    -fx-border-radius: 6;
+    -fx-min-height: 36;
+    -fx-prompt-text-fill: #81909c;
+}
+.text-field { -fx-padding: 8 10; }
+.text-field:focused, .combo-box-base:focused, .text-area:focused {
+    -fx-border-color: #177c72;
+    -fx-effect: dropshadow(gaussian, rgba(23, 124, 114, 0.13), 4, 0, 0, 0);
+}
+.combo-box-base > .arrow-button {
+    -fx-background-color: transparent;
+    -fx-padding: 0 10;
+}
+.combo-box > .list-cell {
+    -fx-padding: 8 10;
+    -fx-text-fill: #263849;
+}
+.combo-box-popup .list-view {
+    -fx-background-color: #ffffff;
+    -fx-border-color: #ced9e0;
+}
+.combo-box-popup .list-cell {
+    -fx-padding: 9 10;
+    -fx-background-color: #ffffff;
+    -fx-text-fill: #263849;
+}
+.combo-box-popup .list-cell:filled:hover, .combo-box-popup .list-cell:filled:selected {
+    -fx-background-color: #e2f2ef;
+    -fx-text-fill: #18564e;
+}
+.date-picker > .text-field {
+    -fx-background-color: transparent;
+    -fx-background-radius: 6 0 0 6;
+    -fx-border-width: 0;
+    -fx-effect: null;
+}
+.date-picker > .arrow-button {
+    -fx-background-color: #edf4f4;
+    -fx-background-radius: 0 6 6 0;
+    -fx-padding: 0 10;
+}
+.date-picker-popup {
+    -fx-background-color: #ffffff;
+    -fx-border-color: #ced9e0;
+}
+.date-picker-popup .month-year-pane { -fx-background-color: #edf4f4; }
+.text-area { -fx-padding: 2; }
+.text-area .content {
+    -fx-background-color: #ffffff;
+    -fx-background-radius: 4;
+    -fx-padding: 8;
+}
+
+.table-view {
+    -fx-background-color: #ffffff;
+    -fx-background-radius: 8;
+    -fx-border-color: #dce5eb;
+    -fx-border-radius: 8;
+    -fx-padding: 1;
+    -fx-fixed-cell-size: 44;
+    -fx-table-cell-border-color: #edf2f5;
+}
+.table-view .column-header-background {
+    -fx-background-color: #edf3f5;
+    -fx-background-radius: 8 8 0 0;
+}
+.table-view .column-header, .table-view .filler {
+    -fx-background-color: transparent;
+    -fx-size: 44;
+    -fx-border-color: transparent #dce5eb transparent transparent;
+}
+.table-view .column-header .label {
+    -fx-alignment: CENTER_LEFT;
+    -fx-padding: 0 12;
+    -fx-font-weight: bold;
+    -fx-text-fill: #506776;
+}
+.table-row-cell {
+    -fx-background-color: #ffffff;
+    -fx-background-insets: 0;
+}
+.table-row-cell:odd { -fx-background-color: #f9fbfc; }
+.table-row-cell:filled:hover { -fx-background-color: #eff7f5; }
+.table-row-cell:filled:selected { -fx-background-color: #dcefea; }
+.table-view .table-cell {
+    -fx-alignment: CENTER_LEFT;
+    -fx-padding: 10 12;
+    -fx-text-fill: #263849;
+}
+.table-row-cell:selected .table-cell { -fx-text-fill: #154e46; }
+.table-row-cell:empty { -fx-background-color: #ffffff; }
+.scroll-bar { -fx-background-color: transparent; }
+.scroll-bar .thumb {
+    -fx-background-color: #bfccd4;
+    -fx-background-radius: 6;
+}
+
+.form-header {
+    -fx-background-color: #ffffff;
+    -fx-padding: 24;
+}
+.form-scroll, .form-scroll > .viewport {
+    -fx-background-color: #ffffff;
+    -fx-border-width: 0;
+    -fx-padding: 0;
+}
+.form-grid {
+    -fx-background-color: #ffffff;
+    -fx-padding: 0 24 24 24;
+}
+.form-actions {
+    -fx-background-color: #f5f8fa;
+    -fx-border-color: #dce5eb transparent transparent transparent;
+    -fx-padding: 16 24;
+}
+.form-actions .button { -fx-min-width: 110; }
+.statistics-window { -fx-padding: 24; }
+.statistics-grid { -fx-padding: 20; }
+.stat-value {
+    -fx-font-size: 19px;
+    -fx-font-weight: bold;
+    -fx-text-fill: #254b48;
+}
+.money-value {
+    -fx-font-size: 21px;
+    -fx-text-fill: #177c72;
+}
+.dialog-actions { -fx-padding: 4 0 0 0; }
+.dialog-pane { -fx-background-color: #f5f8fa; }
+.dialog-pane > .header-panel { -fx-background-color: #ffffff; }
+.dialog-pane > .header-panel .label {
+    -fx-font-size: 17px;
+    -fx-font-weight: bold;
+}
+.dialog-pane .button:default {
+    -fx-background-color: #177c72;
+    -fx-border-color: #177c72;
+    -fx-text-fill: #ffffff;
+}
+.dialog-pane .button:default:hover {
+    -fx-background-color: #12675f;
+    -fx-border-color: #12675f;
+}
+.dialog-pane.confirmation .button:default {
+    -fx-background-color: #b43b32;
+    -fx-border-color: #b43b32;
+}
+.dialog-pane.confirmation .button:default:hover {
+    -fx-background-color: #962f28;
+    -fx-border-color: #962f28;
+}

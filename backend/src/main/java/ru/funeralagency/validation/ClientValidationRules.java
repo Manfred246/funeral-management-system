@@ -3,7 +3,6 @@ package ru.funeralagency.validation;
 import ru.funeralagency.exception.ValidationException;
 import ru.funeralagency.model.Client;
 
-/** Проверки выполняются сервисом перед созданием и изменением клиента. */
 public final class ClientValidationRules {
     private ClientValidationRules() {
     }
@@ -39,31 +38,21 @@ public final class ClientValidationRules {
         if (phone == null || phone.isBlank()) {
             throw new ValidationException("Телефон клиента обязателен");
         }
+
         phone = phone.trim();
-        // Проверяем исходную строку, чтобы не скрыть ошибочные символы при очистке.
-        if (!phone.matches("\\+?[0-9][0-9 ()-]*") || !hasBalancedParentheses(phone)) {
+
+        if (!phone.matches("\\+?[0-9](?:[0-9 -]|\\([0-9 -]*[0-9][0-9 -]*\\))*")) {
             throw new ValidationException("Некорректный формат телефона");
         }
-        String normalized = phone.replaceAll("[ ()-]", "");
-        if (!normalized.matches("\\+?[0-9]{10,15}")) {
-            throw new ValidationException("Телефон должен содержать от 10 до 15 цифр");
-        }
-        // Максимум 16 символов вместе с '+': помещается в VARCHAR(20).
-        return normalized;
-    }
 
-    private static boolean hasBalancedParentheses(String phone) {
-        int balance = 0;
-        for (int i = 0; i < phone.length(); i++) {
-            if (phone.charAt(i) == '(') {
-                balance++;
-            } else if (phone.charAt(i) == ')') {
-                balance--;
-                if (balance < 0) {
-                    return false;
-                }
-            }
+        String normalized = phone.replaceAll("[ ()-]", "");
+
+        if (!normalized.matches("\\+?[0-9]{10,15}")) {
+            throw new ValidationException(
+                    "Телефон должен содержать от 10 до 15 цифр"
+            );
         }
-        return balance == 0 && !phone.contains("()");
+
+        return normalized;
     }
 }

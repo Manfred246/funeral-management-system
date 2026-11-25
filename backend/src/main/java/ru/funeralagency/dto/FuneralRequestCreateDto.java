@@ -5,7 +5,6 @@ import ru.funeralagency.model.CeremonyType;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 
-/** Данные для создания заявки; ID и время создания назначаются сервером. */
 public class FuneralRequestCreateDto {
 
     private Long clientId;

@@ -30,6 +30,6 @@
     <modules>
         <module>backend</module>
         <module>console-client</module>
+        <module>javafx-client</module>
     </modules>
-
 </project>
